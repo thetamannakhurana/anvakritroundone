@@ -8,6 +8,17 @@ export default function ScanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+useEffect(() => {
+  const handleResize = () => {
+    setIsMobile(window.innerWidth <= 768);
+  };
+  
+  handleResize();
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -358,18 +369,19 @@ export default function ScanPage() {
                 border: '1px solid rgba(59, 130, 246, 0.1)'
               }}>
                 <h1 style={{
-                  fontSize: '32px',
-                  fontWeight: '700',
-                  background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  marginBottom: '8px',
-                  fontFamily: "'Orbitron', sans-serif",
-                  letterSpacing: '1px'
-                }}>
-                  AUTHENTICATION
-                </h1>
+  fontSize: isMobile ? '1.5rem' : '32px',
+  fontWeight: '700',
+  background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
+  backgroundClip: 'text',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  marginBottom: '8px',
+  fontFamily: "'Orbitron', sans-serif",
+  letterSpacing: isMobile ? '0.5px' : '1px'
+}}>
+  AUTHENTICATION
+</h1>
+
                 <p style={{
                   color: '#94a3b8',
                   marginBottom: '0',
