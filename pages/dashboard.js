@@ -980,7 +980,8 @@ export default function DashboardPage() {
               fontFamily: "'Rajdhani', sans-serif",
               letterSpacing: '0.5px'
             }}>
-              TECHNICAL SUPPORT: anvakrit@nfsu.ac.in
+              TECHNICAL SUPPORT: csi_dc@nfsu.ac.in
+              Or you can directly message on the Whatsapp Group
             </p>
             <p style={{
               color: '#475569',

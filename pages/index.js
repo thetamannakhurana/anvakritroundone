@@ -34,45 +34,6 @@ export default function HomePage() {
           0%, 100% { opacity: 0.6; }
           50% { opacity: 1; }
         }
-                  /* MOBILE RESPONSIVE */
-        @media (max-width: 768px) {
-          div[style*="padding: '60px 45px'"] {
-            padding: 2rem 1.25rem !important;
-          }
-
-          h1 {
-            font-size: 2.5rem !important;
-          }
-
-          p {
-            font-size: 0.95rem !important;
-          }
-
-          button, a {
-            padding: 1rem 1.5rem !important;
-            font-size: 0.95rem !important;
-            width: 100% !important;
-            max-width: 320px !important;
-          }
-
-          /* Lock icon */
-          div[style*="width: '100px'"] {
-            width: 70px !important;
-            height: 70px !important;
-          }
-
-          svg {
-            width: 35px !important;
-            height: 35px !important;
-          }
-        }
-
-        @media (max-width: 480px) {
-          h1 {
-            font-size: 2rem !important;
-          }
-        }
-
       `}</style>
 
       <div style={{
