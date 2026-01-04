@@ -91,17 +91,25 @@ export default function DashboardPage() {
   }
 
   const formatDate = (dateString) => {
-  if (typeof dateString === 'string' && !dateString.includes('T')) {
+  if (!dateString) return 'N/A';
+  
+  // If it's already formatted, return as is
+  if (typeof dateString === 'string' && !dateString.includes('T') && !dateString.includes('Z')) {
     return dateString;
   }
   
+  // Parse the date and convert to IST
   const date = new Date(dateString);
   
+  // Convert to IST (UTC+5:30)
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+  const istDate = new Date(date.getTime() + istOffset);
+  
   // Get day with suffix (1st, 2nd, 3rd, 4th, etc.)
-  const day = date.getDate();
-  const suffix = (day) => {
-    if (day > 3 && day < 21) return 'th';
-    switch (day % 10) {
+  const day = istDate.getUTCDate();
+  const getDaySuffix = (d) => {
+    if (d > 3 && d < 21) return 'th';
+    switch (d % 10) {
       case 1: return 'st';
       case 2: return 'nd';
       case 3: return 'rd';
@@ -110,8 +118,8 @@ export default function DashboardPage() {
   };
   
   // Format time (12-hour with AM/PM)
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const hours = istDate.getUTCHours();
+  const minutes = istDate.getUTCMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const hour12 = hours % 12 || 12;
   const minuteStr = minutes.toString().padStart(2, '0');
@@ -119,14 +127,15 @@ export default function DashboardPage() {
   // Get month (short form)
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const month = months[date.getMonth()];
+  const month = months[istDate.getUTCMonth()];
   
   // Get year
-  const year = date.getFullYear();
+  const year = istDate.getUTCFullYear();
   
   // Final format: "2:52 PM, 4th Jan 2026"
-  return `${hour12}:${minuteStr} ${ampm}, ${day}${suffix(day)} ${month} ${year}`;
+  return `${hour12}:${minuteStr} ${ampm}, ${day}${getDaySuffix(day)} ${month} ${year}`;
 };
+
 
 
   const getTimerColor = () => {
