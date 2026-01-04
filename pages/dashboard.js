@@ -390,13 +390,15 @@ export default function DashboardPage() {
                 </div>
 
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '20px',
-                  marginBottom: '30px',
-                  maxWidth: '600px',
-                  margin: '0 auto 30px'
-                }}>
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, 1fr)',
+  gap: typeof window !== 'undefined' && window.innerWidth <= 768 ? '8px' : '20px',
+  marginBottom: '30px',
+  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : '600px',
+  margin: '0 auto 30px',
+  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0 8px' : '0'
+}}>
+
                   {[
                     { value: timeRemaining.hours, label: 'HOURS' },
                     { value: timeRemaining.minutes, label: 'MINUTES' },
@@ -405,30 +407,34 @@ export default function DashboardPage() {
                     <div
                       key={unit.label}
                       style={{
-                        background: `rgba(59, 130, 246, 0.05)`,
-                        borderRadius: '16px',
-                        padding: '28px 20px',
-                        border: `1px solid rgba(59, 130, 246, 0.2)`,
-                        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
-                      }}
+  background: `rgba(59, 130, 246, 0.05)`,
+  borderRadius: '16px',
+  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '14px 8px' : '28px 20px',
+  border: `1px solid rgba(59, 130, 246, 0.2)`,
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+}}
+
                     >
                       <div style={{
-                        fontSize: '52px',
-                        fontWeight: '800',
-                        color: getTimerColor(),
-                        fontFamily: "'Orbitron', sans-serif",
-                        lineHeight: '1',
-                        marginBottom: '12px'
-                      }}>
+  fontSize: typeof window !== 'undefined' && window.innerWidth <= 480 ? '1.75rem' : 
+           (typeof window !== 'undefined' && window.innerWidth <= 768 ? '2.25rem' : '52px'),
+  fontWeight: '800',
+  color: getTimerColor(),
+  fontFamily: "'Orbitron', sans-serif",
+  lineHeight: '1',
+  marginBottom: '12px'
+}}>
+
                         {String(unit.value).padStart(2, '0')}
                       </div>
                       <div style={{
-                        color: '#94a3b8',
-                        fontSize: '12px',
-                        letterSpacing: '1.5px',
-                        fontWeight: '600',
-                        fontFamily: "'Rajdhani', sans-serif"
-                      }}>
+  color: '#94a3b8',
+  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.65rem' : '12px',
+  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.5px' : '1.5px',
+  fontWeight: '600',
+  fontFamily: "'Rajdhani', sans-serif"
+}}>
+
                         {unit.label}
                       </div>
                     </div>
