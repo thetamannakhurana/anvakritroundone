@@ -136,89 +136,47 @@ export default function DashboardPage() {
           90% { opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
-                  /* MOBILE RESPONSIVE */
+                /* MOBILE TIMER FIX */
         @media (max-width: 768px) {
-          body {
-            padding: 1rem;
-          }
-
-          h1 {
-            font-size: 2rem !important;
-            padding: 0 !important;
-          }
-
-          h2 {
-            font-size: 1.25rem !important;
-          }
-
-          /* Timer - Make horizontal and compact */
-          div[style*="gridTemplateColumns: 'repeat(3, 1fr)'"] {
-            gap: 0.5rem !important;
+          /* Make timer container scrollable horizontally if needed */
+          div[style*="maxWidth: '600px'"] {
             max-width: 100% !important;
+            padding: 0 0.5rem !important;
           }
 
-          /* Timer numbers smaller on mobile */
-          div[style*="fontSize: '52px'"] div {
+          /* Reduce timer number size */
+          div[style*="fontSize: '52px'"] {
             font-size: 2.5rem !important;
-            padding: 1.5rem 1rem !important;
           }
 
-          /* Timer labels */
+          /* Reduce timer box padding */
+          div[style*="padding: '28px 20px'"] {
+            padding: 1.25rem 0.75rem !important;
+          }
+
+          /* Reduce gap between timer boxes */
+          div[style*="gap: '20px'"] {
+            gap: 0.5rem !important;
+          }
+
+          /* Timer label smaller */
           div[style*="fontSize: '12px'"] {
-            font-size: 0.7rem !important;
-          }
-
-          /* Buttons full-width */
-          button {
-            width: 100% !important;
-            padding: 1rem !important;
-            font-size: 0.95rem !important;
-            margin-bottom: 0.75rem !important;
-          }
-
-          /* Cards - less padding */
-          div[style*="padding: '30px'"] {
-            padding: 1.5rem !important;
-          }
-
-          div[style*="padding: '40px'"] {
-            padding: 1.5rem !important;
-          }
-
-          div[style*="padding: '35px'"] {
-            padding: 1.5rem !important;
-          }
-
-          /* Grid to single column */
-          div[style*="gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))'"] {
-            grid-template-columns: 1fr !important;
+            font-size: 0.65rem !important;
           }
         }
 
         @media (max-width: 480px) {
-          h1 {
-            font-size: 1.75rem !important;
-          }
-
-          div[style*="fontSize: '52px'"] div {
-            font-size: 2rem !important;
-            padding: 1rem 0.75rem !important;
-          }
-
-          div[style*="fontSize: '48px'"] h1 {
+          /* Even smaller on small phones */
+          div[style*="fontSize: '52px'"] {
             font-size: 2rem !important;
           }
-        }
 
-        /* Landscape mode */
-        @media (max-width: 768px) and (orientation: landscape) {
-          div[style*="gridTemplateColumns: 'repeat(3, 1fr)'"] {
-            gap: 0.5rem !important;
-          }
-
-          div[style*="fontSize: '52px'"] div {
-            font-size: 1.75rem !important;
+          div[style*="padding: '28px 20px'"] {
             padding: 1rem 0.5rem !important;
+          }
+
+          div[style*="gap: '20px'"] {
+            gap: 0.35rem !important;
           }
         }
 
