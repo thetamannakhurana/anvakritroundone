@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from './auth/[...nextauth]';
 
+
 async function getSheetsClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
@@ -13,26 +14,59 @@ async function getSheetsClient() {
   return google.sheets({ version: 'v4', auth });
 }
 
+// Format date to IST with readable format
+function formatToIST(date) {
+  const day = date.getDate();
+  const getDaySuffix = (d) => {
+    if (d > 3 && d < 21) return 'th';
+    switch (d % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  };
+  
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  const minuteStr = minutes.toString().padStart(2, '0');
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  
+  return `${hour12}:${minuteStr} ${ampm}, ${day}${getDaySuffix(day)} ${month} ${year}`;
+}
+
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
+
 
   const session = await getServerSession(req, res, authOptions);
   if (!session) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
+
   const { scanTimestamp } = req.body;
   const userEmail = session.user.email.toLowerCase().trim();
 
+
   try {
     const sheets = await getSheetsClient();
+
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
       range: 'Sheet1!A:H',
     });
+
 
     const rows = response.data.values;
     if (!rows || rows.length < 2) {
@@ -42,13 +76,16 @@ export default async function handler(req, res) {
       });
     }
 
+
     const headers = rows[0];
     const dataRows = rows.slice(1);
+
 
     // Find user by email in column D (Candidate's Email)
     let userRowIndex = -1;
     let userRow = null;
     let teamName = null;
+
 
     for (let i = 0; i < dataRows.length; i++) {
       const row = dataRows[i];
@@ -62,12 +99,14 @@ export default async function handler(req, res) {
       }
     }
 
+
     if (!userRow) {
       return res.status(404).json({
         success: false,
         message: 'Your email is not registered in any team. Please contact organizers.'
       });
     }
+
 
     // Find the first row of this team
     let teamFirstRowIndex = -1;
@@ -78,10 +117,12 @@ export default async function handler(req, res) {
       }
     }
 
+
     const teamFirstRow = dataRows[teamFirstRowIndex - 2];
     const existingStartTime = teamFirstRow[4]; // Column E
     const existingEndTime = teamFirstRow[5];   // Column F
     const existingFirstScanner = teamFirstRow[6]; // Column G
+
 
     // Check if timer already started
     if (existingStartTime && existingEndTime) {
@@ -97,9 +138,15 @@ export default async function handler(req, res) {
       });
     }
 
+
     // First scan - start the 24-hour timer
     const startTime = new Date(scanTimestamp);
     const endTime = new Date(startTime.getTime() + 24 * 60 * 60 * 1000);
+
+    // Format timestamps to readable IST format
+    const startTimeFormatted = formatToIST(startTime);
+    const endTimeFormatted = formatToIST(endTime);
+
 
     // Update the first row of the team with timer data
     await sheets.spreadsheets.values.update({
@@ -108,24 +155,26 @@ export default async function handler(req, res) {
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
-          startTime.toISOString(),
-          endTime.toISOString(),
+          startTimeFormatted,
+          endTimeFormatted,
           userEmail,
           'Active'
         ]],
       },
     });
 
+
     return res.status(200).json({
       success: true,
       alreadyStarted: false,
       teamName,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
+      startTime: startTimeFormatted,
+      endTime: endTimeFormatted,
       firstScanner: userEmail,
       currentScanner: userEmail,
       scanTimestamp,
     });
+
 
   } catch (error) {
     console.error('Error:', error);
