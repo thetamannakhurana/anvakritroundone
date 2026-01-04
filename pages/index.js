@@ -1,12 +1,32 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+
 export default function HomePage() {
   const [mounted, setMounted] = useState(false);
+  const [fontSize, setFontSize] = useState('68px');
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const updateFontSize = () => {
+      if (window.innerWidth <= 480) {
+        setFontSize('2.5rem'); // 40px for small phones
+      } else if (window.innerWidth <= 768) {
+        setFontSize('3.5rem'); // 56px for tablets
+      } else {
+        setFontSize('68px'); // Desktop
+      }
+    };
+    
+    updateFontSize(); // Set initial size
+    window.addEventListener('resize', updateFontSize);
+    
+    return () => window.removeEventListener('resize', updateFontSize);
+  }, []);
+
 
   return (
     <>
@@ -36,6 +56,7 @@ export default function HomePage() {
         }
       `}</style>
 
+
       <div style={{
         position: 'relative',
         minHeight: '100vh',
@@ -62,6 +83,7 @@ export default function HomePage() {
           zIndex: 0
         }} />
 
+
         {/* Animated Scanning Line */}
         <div style={{
           position: 'absolute',
@@ -74,6 +96,7 @@ export default function HomePage() {
           animation: 'scanline 8s linear infinite',
           zIndex: 1
         }} />
+
 
         {/* Moving Particles */}
         {mounted && [...Array(20)].map((_, i) => {
@@ -106,6 +129,7 @@ export default function HomePage() {
             />
           );
         })}
+
 
         {/* Content Container */}
         <div style={{
@@ -157,24 +181,25 @@ export default function HomePage() {
               </div>
             </div>
 
+
             {/* Main Title */}
             <h1 style={{
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 480 ? '2.5rem' : 
-           (typeof window !== 'undefined' && window.innerWidth <= 768 ? '3.5rem' : '68px'),
-  fontWeight: '900',
-  background: 'linear-gradient(180deg, #ffffff 0%, #3b82f6 100%)',
-  backgroundClip: 'text',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  marginBottom: '16px',
-  textAlign: 'center',
-  fontFamily: "'Orbitron', monospace",
-  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '2px' : '3px',
-  lineHeight: '1',
-  textShadow: '0 0 80px rgba(59, 130, 246, 0.3)'
-}}>
-  ANVAKRIT 2.0
-</h1>
+              fontSize: fontSize,
+              fontWeight: '900',
+              background: 'linear-gradient(180deg, #ffffff 0%, #3b82f6 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              marginBottom: '16px',
+              textAlign: 'center',
+              fontFamily: "'Orbitron', monospace",
+              letterSpacing: fontSize === '68px' ? '3px' : '2px',
+              lineHeight: '1',
+              textShadow: '0 0 80px rgba(59, 130, 246, 0.3)'
+            }}>
+              ANVAKRIT 2.0
+            </h1>
+
 
             {/* Tagline */}
             <div style={{
@@ -193,6 +218,7 @@ export default function HomePage() {
                 Unmask Truth in Bytes
               </p>
             </div>
+
 
             {/* Subtitle */}
             <p style={{
@@ -227,6 +253,7 @@ export default function HomePage() {
                 Access the secure portal to receive your classified case file and begin the 24-hour investigation window.
               </p>
             </div>
+
 
             {/* CTA Button */}
             <Link href="/scan" style={{
@@ -264,6 +291,7 @@ export default function HomePage() {
               </svg>
               <span>Access Portal</span>
             </Link>
+
 
             {/* Footer */}
             <div style={{
