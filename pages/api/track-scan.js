@@ -14,9 +14,13 @@ async function getSheetsClient() {
   return google.sheets({ version: 'v4', auth });
 }
 
-// Format date to IST with readable format
-function formatToIST(date) {
-  const day = date.getDate();
+// Convert UTC Date to IST and format
+function formatToIST(utcDate) {
+  // Add IST offset (5 hours 30 minutes)
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(utcDate.getTime() + istOffset);
+  
+  const day = istDate.getUTCDate();
   const getDaySuffix = (d) => {
     if (d > 3 && d < 21) return 'th';
     switch (d % 10) {
@@ -27,16 +31,16 @@ function formatToIST(date) {
     }
   };
   
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const hours = istDate.getUTCHours();
+  const minutes = istDate.getUTCMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const hour12 = hours % 12 || 12;
   const minuteStr = minutes.toString().padStart(2, '0');
   
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const month = months[date.getMonth()];
-  const year = date.getFullYear();
+  const month = months[istDate.getUTCMonth()];
+  const year = istDate.getUTCFullYear();
   
   return `${hour12}:${minuteStr} ${ampm}, ${day}${getDaySuffix(day)} ${month} ${year}`;
 }
