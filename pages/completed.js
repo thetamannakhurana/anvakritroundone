@@ -35,6 +35,61 @@ export default function CompletedPage() {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(100vh); }
         }
+                  /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+          div[style*="padding: '60px 50px'"] {
+            padding: 2rem 1.25rem !important;
+          }
+
+          h1 {
+            font-size: 2rem !important;
+          }
+
+          p {
+            font-size: 0.95rem !important;
+          }
+
+          /* Success icon smaller */
+          div[style*="width: '140px'"][style*="height: '140px'"] {
+            width: 100px !important;
+            height: 100px !important;
+          }
+
+          div[style*="width: '120px'"][style*="height: '120px'"] {
+            width: 80px !important;
+            height: 80px !important;
+          }
+
+          svg {
+            width: 45px !important;
+            height: 45px !important;
+          }
+
+          /* Info boxes */
+          div[style*="padding: '28px'"] {
+            padding: 1.25rem !important;
+          }
+
+          div[style*="padding: '24px'"] {
+            padding: 1.25rem !important;
+          }
+
+          ul {
+            font-size: 0.85rem !important;
+            padding-left: 1.25rem !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          h1 {
+            font-size: 1.75rem !important;
+          }
+
+          div[style*="fontSize: '48px'"] h1 {
+            font-size: 1.75rem !important;
+          }
+        }
+
       `}</style>
 
       <div style={{

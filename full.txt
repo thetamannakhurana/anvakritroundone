@@ -1,0 +1,3026 @@
+pages folder then api folder in it I have auth folder in which I have [...nextauth].js and in api I have finish-early.js and track-scan.js and In pages I have _app.js, completed,js, dashboard,js, index.js, scan.js, success.js amd timesup.js
+
+nextauth
+import NextAuth from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+
+export const authOptions = {
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+  ],
+  session: {
+    strategy: 'jwt',
+  },
+  callbacks: {
+    async signIn({ user }) {
+      return true;
+    },
+    async session({ session, token }) {
+      if (session?.user) {
+        session.user.id = token.sub;
+      }
+      return session;
+    },
+  },
+  pages: {
+    signIn: '/scan',
+  },
+};
+
+export default NextAuth(authOptions);
+
+finish-early
+import { google } from 'googleapis';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from './auth/[...nextauth]';
+
+async function getSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const { teamName } = req.body;
+
+  try {
+    const sheets = await getSheetsClient();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Sheet1!A:H',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No teams found' 
+      });
+    }
+
+    const dataRows = rows.slice(1);
+
+    // Find the first row of this team
+    let teamFirstRowIndex = -1;
+    for (let i = 0; i < dataRows.length; i++) {
+      if (dataRows[i][0] === teamName) {
+        teamFirstRowIndex = i + 2;
+        break;
+      }
+    }
+
+    if (teamFirstRowIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Team not found'
+      });
+    }
+
+    // Update status to "Completed"
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: `Sheet1!H${teamFirstRowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [['Completed']],
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Timer ended successfully'
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to end timer',
+      details: error.message
+    });
+  }
+}
+
+track-scan
+import { google } from 'googleapis';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from './auth/[...nextauth]';
+
+async function getSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const { scanTimestamp } = req.body;
+  const userEmail = session.user.email.toLowerCase().trim();
+
+  try {
+    const sheets = await getSheetsClient();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Sheet1!A:H',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No teams found in sheet' 
+      });
+    }
+
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+
+    // Find user by email in column D (Candidate's Email)
+    let userRowIndex = -1;
+    let userRow = null;
+    let teamName = null;
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const email = row[3]; // Column D (index 3)
+      
+      if (email && email.toLowerCase().trim() === userEmail) {
+        userRow = row;
+        userRowIndex = i + 2;
+        teamName = row[0]; // Column A - Team Name
+        break;
+      }
+    }
+
+    if (!userRow) {
+      return res.status(404).json({
+        success: false,
+        message: 'Your email is not registered in any team. Please contact organizers.'
+      });
+    }
+
+    // Find the first row of this team
+    let teamFirstRowIndex = -1;
+    for (let i = 0; i < dataRows.length; i++) {
+      if (dataRows[i][0] === teamName) {
+        teamFirstRowIndex = i + 2;
+        break;
+      }
+    }
+
+    const teamFirstRow = dataRows[teamFirstRowIndex - 2];
+    const existingStartTime = teamFirstRow[4]; // Column E
+    const existingEndTime = teamFirstRow[5];   // Column F
+    const existingFirstScanner = teamFirstRow[6]; // Column G
+
+    // Check if timer already started
+    if (existingStartTime && existingEndTime) {
+      return res.status(200).json({
+        success: true,
+        alreadyStarted: true,
+        teamName,
+        startTime: existingStartTime,
+        endTime: existingEndTime,
+        firstScanner: existingFirstScanner,
+        currentScanner: userEmail,
+        scanTimestamp,
+      });
+    }
+
+    // First scan - start the 24-hour timer
+    const startTime = new Date(scanTimestamp);
+    const endTime = new Date(startTime.getTime() + 24 * 60 * 60 * 1000);
+
+    // Update the first row of the team with timer data
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: `Sheet1!E${teamFirstRowIndex}:H${teamFirstRowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[
+          startTime.toISOString(),
+          endTime.toISOString(),
+          userEmail,
+          'Active'
+        ]],
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      alreadyStarted: false,
+      teamName,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      firstScanner: userEmail,
+      currentScanner: userEmail,
+      scanTimestamp,
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to process scan',
+      details: error.message
+    });
+  }
+}
+
+completed.js
+import { useEffect, useState } from 'react';
+
+export default function CompletedPage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return (
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @keyframes success-scale {
+          0% { transform: scale(0) rotate(0deg); opacity: 0; }
+          50% { transform: scale(1.1) rotate(180deg); }
+          100% { transform: scale(1) rotate(360deg); opacity: 1; }
+        }
+        @keyframes success-ring {
+          0% { transform: scale(0.8); opacity: 0; }
+          50% { transform: scale(1.2); opacity: 1; }
+          100% { transform: scale(1.4); opacity: 0; }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes particle-float {
+          0% { transform: translate(0, 0); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+      `}</style>
+
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#030712',
+        padding: '20px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Grid Background */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `
+            linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px'
+        }} />
+
+        {/* Scanning Line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: '-100%',
+          width: '100%',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%)',
+          boxShadow: '0 0 30px rgba(59, 130, 246, 0.6)',
+          animation: 'scanline 8s linear infinite',
+          zIndex: 1
+        }} />
+
+        {/* Success Particles */}
+        {mounted && [...Array(20)].map((_, i) => {
+          const startX = Math.random() * 100;
+          const startY = Math.random() * 100;
+          const endX = (Math.random() - 0.5) * 300;
+          const endY = (Math.random() - 0.5) * 300;
+          
+          return (
+            <div
+              key={`particle-${i}`}
+              style={{
+                position: 'absolute',
+                left: `${startX}%`,
+                top: `${startY}%`,
+                width: `${3 + Math.random() * 4}px`,
+                height: `${3 + Math.random() * 4}px`,
+                background: i % 2 === 0 ? '#3b82f6' : '#22c55e',
+                borderRadius: '50%',
+                boxShadow: `0 0 10px ${i % 2 === 0 ? '#3b82f6' : '#22c55e'}`,
+                '--tx': `${endX}px`,
+                '--ty': `${endY}px`,
+                animation: `particle-float ${8 + Math.random() * 8}s ease-in-out infinite`,
+                animationDelay: `${Math.random() * 3}s`,
+                zIndex: 1,
+                opacity: 0
+              }}
+            />
+          );
+        })}
+
+        <div style={{
+          maxWidth: '650px',
+          width: '100%',
+          position: 'relative',
+          zIndex: 10,
+          animation: 'fade-in 0.8s ease-out'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '24px',
+            padding: '60px 50px',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5), 0 0 50px rgba(34, 197, 94, 0.1)',
+            textAlign: 'center'
+          }}>
+            
+            {/* Success Icon with Rings */}
+            <div style={{
+              position: 'relative',
+              width: '140px',
+              height: '140px',
+              margin: '0 auto 40px'
+            }}>
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    width: '100%',
+                    height: '100%',
+                    border: '2px solid #22c55e',
+                    borderRadius: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    animation: `success-ring ${1.5 + i * 0.3}s ease-out infinite`,
+                    animationDelay: `${i * 0.2}s`
+                  }}
+                />
+              ))}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '120px',
+                height: '120px',
+                background: 'radial-gradient(circle, rgba(34, 197, 94, 0.2) 0%, transparent 70%)',
+                borderRadius: '50%',
+                transform: 'translate(-50%, -50%)',
+                animation: 'success-scale 0.8s ease-out forwards'
+              }}>
+                <svg style={{ 
+                  width: '70px', 
+                  height: '70px', 
+                  color: '#22c55e',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  filter: 'drop-shadow(0 0 20px #22c55e)'
+                }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div style={{
+              background: 'linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.15), transparent)',
+              padding: '20px',
+              borderRadius: '15px',
+              marginBottom: '30px'
+            }}>
+              <h1 style={{
+                fontSize: '48px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #22c55e, #86efac)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                marginBottom: '12px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '2px',
+                lineHeight: '1'
+              }}>
+                CASE CLOSED
+              </h1>
+              <p style={{
+                color: '#86efac',
+                fontSize: '18px',
+                margin: 0,
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '2px',
+                textTransform: 'uppercase',
+                fontWeight: '600'
+              }}>
+                Investigation Terminated
+              </p>
+            </div>
+
+            {/* Success Message */}
+            <div style={{
+              background: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '15px',
+              padding: '28px',
+              marginBottom: '28px'
+            }}>
+              <p style={{
+                color: '#cbd5e1',
+                fontSize: '15px',
+                lineHeight: '1.9',
+                marginBottom: '18px',
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                Your team's investigation window has been <strong style={{ color: '#22c55e' }}>successfully terminated</strong>.
+              </p>
+              <p style={{
+                color: '#94a3b8',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                Thank you for participating in <strong style={{ color: '#60a5fa' }}>ANVAKRIT 2.0</strong>. Your submission has been recorded and will be evaluated by our forensic panel. All team members have been locked out of the investigation portal.
+              </p>
+            </div>
+
+            {/* Info Box */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderLeft: '4px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '24px',
+              marginBottom: '28px'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                marginBottom: '16px'
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <svg style={{ width: '20px', height: '20px', color: '#60a5fa' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 style={{
+                  color: '#60a5fa',
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  margin: 0,
+                  fontFamily: "'Orbitron', sans-serif",
+                  letterSpacing: '0.5px'
+                }}>
+                  WHAT HAPPENS NEXT?
+                </h3>
+              </div>
+              <ul style={{
+                color: '#cbd5e1',
+                fontSize: '13px',
+                lineHeight: '2.2',
+                paddingLeft: '20px',
+                margin: 0,
+                textAlign: 'left',
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                <li>Your submission is now under forensic review</li>
+                <li>Results will be announced via registered email</li>
+                <li>Top teams advance to offline finals</li>
+                <li>Check your email for further updates</li>
+              </ul>
+            </div>
+
+            {/* Contact Box */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '28px'
+            }}>
+              <p style={{
+                color: '#60a5fa',
+                fontSize: '14px',
+                lineHeight: '1.7',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                📧 <strong>Technical Support:</strong><br/>
+                For queries or concerns, contact:<br/>
+                <strong style={{ fontSize: '15px', color: '#3b82f6' }}>anvakrit@nfsu.ac.in</strong>
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.3), transparent)',
+              marginBottom: '20px'
+            }} />
+
+            <p style={{
+              color: '#64748b',
+              fontSize: '11px',
+              fontFamily: "'Rajdhani', sans-serif",
+              letterSpacing: '1px',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }}>
+              ▓▒░ OPERATION COMPLETED ░▒▓
+            </p>
+            <p style={{
+              color: '#475569',
+              fontSize: '11px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              NATIONAL FORENSIC SCIENCES UNIVERSITY
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+dashboard.js
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  
+  const { teamName, startTime, endTime, firstScanner, isFirst, currentUser } = router.query;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!endTime) return;
+
+    const updateTimer = () => {
+      const now = new Date();
+      
+      let end;
+      if (typeof endTime === 'string' && !endTime.includes('T')) {
+        end = new Date(endTime);
+      } else {
+        end = new Date(endTime);
+      }
+      
+      const difference = end - now;
+
+      if (difference <= 0) {
+        setTimeRemaining({ hours: 0, minutes: 0, seconds: 0, expired: true });
+        router.push('/timesup');
+        return;
+      }
+
+      const hours = Math.floor(difference / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+      setTimeRemaining({ hours, minutes, seconds, expired: false });
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [endTime]);
+
+  const handleFinishEarly = async () => {
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/finish-early', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamName }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        router.push('/completed');
+      } else {
+        alert('Failed to finish timer. Please try again.');
+        setSubmitting(false);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('An error occurred. Please try again.');
+      setSubmitting(false);
+    }
+  };
+
+  if (!teamName) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#030712'
+      }}>
+        <div style={{ color: '#60a5fa', fontFamily: "'Rajdhani', sans-serif", fontSize: '18px', letterSpacing: '2px' }}>
+          LOADING CLASSIFIED DATA...
+        </div>
+      </div>
+    );
+  }
+
+  const formatDate = (dateString) => {
+    if (typeof dateString === 'string' && !dateString.includes('T')) {
+      return dateString;
+    }
+    
+    return new Date(dateString).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getTimerColor = () => {
+    if (!timeRemaining) return '#3b82f6';
+    const totalSeconds = timeRemaining.hours * 3600 + timeRemaining.minutes * 60 + timeRemaining.seconds;
+    if (totalSeconds < 3600) return '#ef4444';
+    if (totalSeconds < 10800) return '#f59e0b';
+    return '#3b82f6';
+  };
+
+  return (
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 20px ${getTimerColor()}40; }
+          50% { box-shadow: 0 0 35px ${getTimerColor()}60; }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes particle-float {
+          0% { transform: translate(0, 0); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+      `}</style>
+
+      <div style={{
+        minHeight: '100vh',
+        background: '#030712',
+        padding: '40px 20px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Grid Background */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `
+            linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px'
+        }} />
+
+        {/* Scanning Line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: '-100%',
+          width: '100%',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%)',
+          boxShadow: '0 0 30px rgba(59, 130, 246, 0.6)',
+          animation: 'scanline 10s linear infinite',
+          zIndex: 1
+        }} />
+
+        {/* Moving Particles */}
+        {mounted && [...Array(12)].map((_, i) => {
+          const startX = Math.random() * 100;
+          const startY = Math.random() * 100;
+          const endX = (Math.random() - 0.5) * 200;
+          const endY = (Math.random() - 0.5) * 200;
+          
+          return (
+            <div
+              key={`particle-${i}`}
+              style={{
+                position: 'absolute',
+                left: `${startX}%`,
+                top: `${startY}%`,
+                width: '2px',
+                height: '2px',
+                background: '#3b82f6',
+                borderRadius: '50%',
+                boxShadow: '0 0 6px #3b82f6',
+                '--tx': `${endX}px`,
+                '--ty': `${endY}px`,
+                animation: `particle-float ${12 + Math.random() * 10}s ease-in-out infinite`,
+                animationDelay: `${Math.random() * 5}s`,
+                zIndex: 1,
+                opacity: 0
+              }}
+            />
+          );
+        })}
+
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          position: 'relative',
+          zIndex: 10
+        }}>
+          
+          {/* Header */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '40px',
+            animation: 'fade-in 0.6s ease-out'
+          }}>
+            <div style={{
+              display: 'inline-block',
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '20px',
+              padding: '30px 50px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)'
+            }}>
+              <div style={{
+                fontSize: '13px',
+                color: '#60a5fa',
+                fontFamily: "'Rajdhani', sans-serif",
+                marginBottom: '12px',
+                letterSpacing: '2px',
+                textTransform: 'uppercase',
+                fontWeight: '600'
+              }}>
+                [OPERATION: ACTIVE]
+              </div>
+              <h1 style={{
+                fontSize: '48px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                marginBottom: '12px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '2px',
+                lineHeight: '1'
+              }}>
+                ANVAKRIT 2.0
+              </h1>
+              <div style={{
+                display: 'inline-block',
+                background: 'rgba(59, 130, 246, 0.15)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '10px',
+                padding: '8px 20px',
+                color: '#60a5fa',
+                fontSize: '15px',
+                fontWeight: '600',
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '1px'
+              }}>
+                TEAM: {teamName}
+              </div>
+            </div>
+          </div>
+
+          {/* First Access Alert */}
+          {isFirst === 'true' && (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              borderLeft: '4px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '30px',
+              textAlign: 'center',
+              animation: 'fade-in 0.8s ease-out'
+            }}>
+              <p style={{
+                color: '#60a5fa',
+                fontSize: '16px',
+                fontWeight: '600',
+                margin: 0,
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '1px'
+              }}>
+                ✅ TIMER INITIATED • YOU ARE PRIMARY INVESTIGATOR
+              </p>
+            </div>
+          )}
+
+          {/* Countdown Timer */}
+          {timeRemaining && !timeRemaining.expired && (
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: '20px',
+              padding: '40px',
+              border: `1px solid ${getTimerColor()}40`,
+              boxShadow: `0 25px 50px rgba(0, 0, 0, 0.5)`,
+              marginBottom: '30px',
+              animation: `fade-in 1s ease-out, pulse-glow 3s ease-in-out infinite`
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  marginBottom: '30px'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    background: getTimerColor(),
+                    borderRadius: '50%',
+                    boxShadow: `0 0 15px ${getTimerColor()}`,
+                    animation: 'pulse-glow 1.5s ease-in-out infinite'
+                  }} />
+                  <p style={{
+                    color: getTimerColor(),
+                    fontSize: '16px',
+                    fontWeight: '700',
+                    margin: 0,
+                    letterSpacing: '2px',
+                    fontFamily: "'Rajdhani', sans-serif",
+                    textTransform: 'uppercase'
+                  }}>
+                    Investigation Window • Shared Deadline
+                  </p>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    background: getTimerColor(),
+                    borderRadius: '50%',
+                    boxShadow: `0 0 15px ${getTimerColor()}`,
+                    animation: 'pulse-glow 1.5s ease-in-out infinite',
+                    animationDelay: '0.75s'
+                  }} />
+                </div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '20px',
+                  marginBottom: '30px',
+                  maxWidth: '600px',
+                  margin: '0 auto 30px'
+                }}>
+                  {[
+                    { value: timeRemaining.hours, label: 'HOURS' },
+                    { value: timeRemaining.minutes, label: 'MINUTES' },
+                    { value: timeRemaining.seconds, label: 'SECONDS' }
+                  ].map((unit, idx) => (
+                    <div
+                      key={unit.label}
+                      style={{
+                        background: `rgba(59, 130, 246, 0.05)`,
+                        borderRadius: '16px',
+                        padding: '28px 20px',
+                        border: `1px solid rgba(59, 130, 246, 0.2)`,
+                        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '52px',
+                        fontWeight: '800',
+                        color: getTimerColor(),
+                        fontFamily: "'Orbitron', sans-serif",
+                        lineHeight: '1',
+                        marginBottom: '12px'
+                      }}>
+                        {String(unit.value).padStart(2, '0')}
+                      </div>
+                      <div style={{
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        letterSpacing: '1.5px',
+                        fontWeight: '600',
+                        fontFamily: "'Rajdhani', sans-serif"
+                      }}>
+                        {unit.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  display: 'inline-block'
+                }}>
+                  <p style={{ 
+                    color: '#60a5fa', 
+                    fontSize: '14px', 
+                    fontWeight: '600',
+                    margin: 0,
+                    fontFamily: "'Rajdhani', sans-serif",
+                    letterSpacing: '0.5px'
+                  }}>
+                    📅 DEADLINE: {formatDate(endTime)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Two Column Layout */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '24px',
+            marginBottom: '30px'
+          }}>
+            {/* Team Status Panel */}
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: '16px',
+              padding: '30px',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+              animation: 'fade-in 1.2s ease-out'
+            }}>
+              <h2 style={{
+                color: '#60a5fa',
+                fontSize: '18px',
+                fontWeight: '700',
+                marginBottom: '24px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '1px'
+              }}>
+                📊 ACCESS REGISTRY
+              </h2>
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {[
+                  { label: 'Primary Investigator', value: firstScanner },
+                  { label: 'Session Started', value: typeof startTime === 'string' ? startTime : formatDate(startTime) },
+                  { label: 'Current User', value: `${currentUser} (YOU)` }
+                ].map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      borderLeft: `3px solid #3b82f6`,
+                      borderRadius: '8px',
+                      padding: '14px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
+                      e.currentTarget.style.transform = 'translateX(4px)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.08)';
+                      e.currentTarget.style.transform = 'translateX(0)';
+                    }}
+                  >
+                    <div style={{
+                      color: '#94a3b8',
+                      fontSize: '11px',
+                      marginBottom: '6px',
+                      fontFamily: "'Rajdhani', sans-serif",
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase'
+                    }}>
+                      {item.label}
+                    </div>
+                    <div style={{
+                      color: '#60a5fa',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      fontFamily: "'Inter', sans-serif",
+                      wordBreak: 'break-all'
+                    }}>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mission Brief Panel */}
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: '16px',
+              padding: '30px',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+              animation: 'fade-in 1.4s ease-out'
+            }}>
+              <h2 style={{
+                color: '#60a5fa',
+                fontSize: '18px',
+                fontWeight: '700',
+                marginBottom: '20px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '1px'
+              }}>
+                🎯 MISSION OBJECTIVES
+              </h2>
+              <ul style={{
+                color: '#cbd5e1',
+                fontSize: '13px',
+                lineHeight: '2',
+                paddingLeft: '20px',
+                margin: 0,
+                listStyleType: 'none',
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                {[
+                  'Analyze complete case file documentation',
+                  'Reconstruct event timeline & sequence',
+                  'Evaluate suspect motives & opportunities',
+                  'Cross-reference forensic evidence',
+                  'Identify perpetrator with justification',
+                  'Submit findings via secured form'
+                ].map((item, idx) => (
+                  <li key={idx} style={{ position: 'relative', paddingLeft: '22px' }}>
+                    <span style={{
+                      position: 'absolute',
+                      left: 0,
+                      color: '#3b82f6',
+                      fontWeight: '700',
+                      fontFamily: "'Rajdhani', sans-serif"
+                    }}>
+                      [{idx + 1}]
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Investigation Protocol */}
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '16px',
+            padding: '35px',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+            marginBottom: '30px',
+            animation: 'fade-in 1.6s ease-out'
+          }}>
+            <h2 style={{
+              color: '#60a5fa',
+              fontSize: '24px',
+              fontWeight: '700',
+              marginBottom: '24px',
+              fontFamily: "'Orbitron', sans-serif",
+              textAlign: 'center',
+              letterSpacing: '1px'
+            }}>
+              📋 INVESTIGATION PROTOCOL
+            </h2>
+            
+            <div style={{
+              color: '#cbd5e1',
+              fontSize: '14px',
+              lineHeight: '1.9',
+              marginBottom: '28px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              <p style={{ marginBottom: '16px' }}>
+                <strong style={{ color: '#60a5fa' }}>ANVAKRIT 2.0</strong> is a high-stakes forensic investigation simulation designed to evaluate your <strong style={{ color: '#3b82f6' }}>analytical reasoning</strong>, <strong style={{ color: '#3b82f6' }}>evidence synthesis</strong>, and <strong style={{ color: '#3b82f6' }}>investigative methodology</strong> under temporal constraints.
+              </p>
+              <p style={{ marginBottom: '0' }}>
+                You have received a <strong style={{ color: '#60a5fa' }}>classified case file</strong> containing: witness statements, forensic reports, psychological profiles, financial records, and supplementary documentation mirroring real-world criminal investigations.
+              </p>
+            </div>
+
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '24px',
+              marginBottom: '24px'
+            }}>
+              <h3 style={{
+                color: '#60a5fa',
+                fontSize: '15px',
+                fontWeight: '700',
+                marginBottom: '14px',
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '1px',
+                textTransform: 'uppercase'
+              }}>
+                📤 SUBMISSION PROTOCOL
+              </h3>
+              <p style={{
+                color: '#cbd5e1',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                Upon case closure, locate the <strong style={{ color: '#60a5fa' }}>secondary QR code</strong> at the end of your case file. This will authenticate access to the <strong style={{ color: '#3b82f6' }}>secured submission portal</strong> (Google Form). Only entries submitted within the active investigation window will be processed.
+              </p>
+            </div>
+
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderLeft: '4px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '24px'
+            }}>
+              <h3 style={{
+                color: '#60a5fa',
+                fontSize: '15px',
+                fontWeight: '700',
+                marginBottom: '14px',
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '1px',
+                textTransform: 'uppercase'
+              }}>
+                ⚠️ CRITICAL CONSTRAINTS
+              </h3>
+              <ul style={{
+                color: '#cbd5e1',
+                fontSize: '14px',
+                lineHeight: '2',
+                paddingLeft: '20px',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                <li><strong>Unified deadline</strong> applies to all team members</li>
+                <li><strong>Timer cannot be suspended</strong> or recalibrated</li>
+                <li><strong>Automatic case closure</strong> upon expiration</li>
+                <li><strong>Single submission</strong> permitted per team</li>
+                <li><strong>Post-deadline entries</strong> are void</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Early Completion Panel */}
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '16px',
+            padding: '40px',
+            marginBottom: '30px',
+            textAlign: 'center',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+            animation: 'fade-in 1.8s ease-out'
+          }}>
+            <h3 style={{
+              color: '#60a5fa',
+              fontSize: '22px',
+              fontWeight: '700',
+              marginBottom: '18px',
+              fontFamily: "'Orbitron', sans-serif",
+              letterSpacing: '1px'
+            }}>
+              ✅ INVESTIGATION COMPLETE?
+            </h3>
+            <p style={{
+              color: '#cbd5e1',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              marginBottom: '24px',
+              maxWidth: '700px',
+              margin: '0 auto 24px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              If your team has successfully submitted the final report via the <strong style={{ color: '#60a5fa' }}>Google Form</strong> (accessed through the QR code in your case file), you may terminate the investigation window early.
+            </p>
+            
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderLeft: '4px solid #ef4444',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '28px',
+              maxWidth: '650px',
+              margin: '0 auto 28px'
+            }}>
+              <p style={{
+                color: '#fca5a5',
+                fontSize: '13px',
+                lineHeight: '1.8',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                <strong style={{ color: '#ef4444' }}>⚠️ WARNING:</strong> This action will <strong>immediately terminate</strong> the 24-hour investigation window for your <strong>entire team</strong>. Proceed only after confirmed form submission. <strong>This action is irreversible.</strong>
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowConfirmModal(true)}
+              disabled={submitting}
+              style={{
+                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                color: '#ffffff',
+                padding: '16px 40px',
+                borderRadius: '12px',
+                border: 'none',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.5 : 1,
+                boxShadow: '0 10px 30px rgba(34, 197, 94, 0.3)',
+                transition: 'all 0.3s ease',
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+                fontFamily: "'Rajdhani', sans-serif",
+                maxWidth: '400px',
+                width: '100%'
+              }}
+              onMouseOver={(e) => {
+                if (!submitting) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 15px 40px rgba(34, 197, 94, 0.4)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!submitting) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(34, 197, 94, 0.3)';
+                }
+              }}
+            >
+              {submitting ? '⚙️ PROCESSING...' : '✓ TERMINATE INVESTIGATION'}
+            </button>
+          </div>
+
+          {/* Confirmation Modal */}
+          {showConfirmModal && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.9)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '20px',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.95)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '20px',
+                padding: '50px 40px',
+                maxWidth: '550px',
+                width: '100%',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                boxShadow: '0 30px 80px rgba(0, 0, 0, 0.8)',
+                animation: 'fade-in 0.3s ease-out'
+              }}>
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  margin: '0 auto 30px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <svg style={{ width: '40px', height: '40px', color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+
+                <h2 style={{
+                  color: 'white',
+                  fontSize: '26px',
+                  fontWeight: '700',
+                  marginBottom: '20px',
+                  textAlign: 'center',
+                  fontFamily: "'Orbitron', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  ⚠️ CONFIRM TERMINATION
+                </h2>
+                
+                <div style={{
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  borderRadius: '12px',
+                  padding: '24px',
+                  marginBottom: '30px'
+                }}>
+                  <p style={{
+                    color: '#cbd5e1',
+                    fontSize: '15px',
+                    lineHeight: '1.8',
+                    marginBottom: '16px',
+                    textAlign: 'center',
+                    fontFamily: "'Inter', sans-serif"
+                  }}>
+                    You are about to <strong style={{ color: '#60a5fa' }}>permanently close</strong> the investigation window for:
+                  </p>
+                  <p style={{
+                    color: '#60a5fa',
+                    fontSize: '20px',
+                    fontWeight: '700',
+                    textAlign: 'center',
+                    margin: '16px 0',
+                    fontFamily: "'Orbitron', sans-serif"
+                  }}>
+                    TEAM {teamName}
+                  </p>
+                  <p style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    lineHeight: '1.8',
+                    textAlign: 'center',
+                    margin: 0,
+                    fontFamily: "'Inter', sans-serif"
+                  }}>
+                    This will immediately lock out all team members.<br/>
+                    Only proceed if submission is confirmed.<br/>
+                    <strong>THIS ACTION CANNOT BE UNDONE.</strong>
+                  </p>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  gap: '14px',
+                  justifyContent: 'center'
+                }}>
+                  <button
+                    onClick={() => setShowConfirmModal(false)}
+                    disabled={submitting}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      color: 'white',
+                      padding: '14px 32px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      fontFamily: "'Rajdhani', sans-serif",
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase'
+                    }}
+                    onMouseOver={(e) => !submitting && (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)')}
+                    onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={handleFinishEarly}
+                    disabled={submitting}
+                    style={{
+                      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                      color: 'white',
+                      padding: '14px 32px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      opacity: submitting ? 0.6 : 1,
+                      transition: 'all 0.2s',
+                      boxShadow: '0 10px 30px rgba(34, 197, 94, 0.3)',
+                      fontFamily: "'Rajdhani', sans-serif",
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase'
+                    }}
+                    onMouseOver={(e) => !submitting && (e.currentTarget.style.transform = 'scale(1.05)')}
+                    onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                  >
+                    {submitting ? 'TERMINATING...' : 'CONFIRM'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div style={{
+            textAlign: 'center',
+            padding: '30px',
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '16px',
+            border: '1px solid rgba(59, 130, 246, 0.1)',
+            marginBottom: '20px',
+            animation: 'fade-in 2s ease-out'
+          }}>
+            <p style={{
+              color: '#60a5fa',
+              fontSize: '16px',
+              fontStyle: 'italic',
+              lineHeight: '1.8',
+              marginBottom: '16px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              "Approach the case with rigor, objectivity, and precision—<br/>
+              because in <strong style={{ color: '#3b82f6', fontFamily: "'Orbitron', sans-serif" }}>ANVAKRIT 2.0</strong>, the truth is buried in the bytes."
+            </p>
+            <div style={{
+              height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent)',
+              margin: '20px 0'
+            }} />
+            <p style={{
+              color: '#64748b',
+              fontSize: '12px',
+              marginBottom: '6px',
+              fontFamily: "'Rajdhani', sans-serif",
+              letterSpacing: '0.5px'
+            }}>
+              TECHNICAL SUPPORT: anvakrit@nfsu.ac.in
+            </p>
+            <p style={{
+              color: '#475569',
+              fontSize: '11px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              NATIONAL FORENSIC SCIENCES UNIVERSITY
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+index.js
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+export default function HomePage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return (
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+        
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+        
+        @keyframes particle-float {
+          0% { transform: translate(0, 0); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+        
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes subtle-pulse {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+
+      <div style={{
+        position: 'relative',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#030712',
+        padding: '40px 20px',
+        overflow: 'hidden'
+      }}>
+        
+        {/* Grid Pattern Background */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `
+            linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px',
+          zIndex: 0
+        }} />
+
+        {/* Animated Scanning Line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: '-100%',
+          width: '100%',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%)',
+          boxShadow: '0 0 30px rgba(59, 130, 246, 0.8), 0 0 60px rgba(59, 130, 246, 0.4)',
+          animation: 'scanline 8s linear infinite',
+          zIndex: 1
+        }} />
+
+        {/* Moving Particles */}
+        {mounted && [...Array(20)].map((_, i) => {
+          const startX = Math.random() * 100;
+          const startY = Math.random() * 100;
+          const endX = (Math.random() - 0.5) * 200;
+          const endY = (Math.random() - 0.5) * 200;
+          const size = 2 + Math.random() * 3;
+          const duration = 8 + Math.random() * 12;
+          const delay = Math.random() * 5;
+          
+          return (
+            <div
+              key={`particle-${i}`}
+              style={{
+                position: 'absolute',
+                left: `${startX}%`,
+                top: `${startY}%`,
+                width: `${size}px`,
+                height: `${size}px`,
+                background: '#3b82f6',
+                borderRadius: '50%',
+                boxShadow: `0 0 ${size * 3}px #3b82f6`,
+                '--tx': `${endX}px`,
+                '--ty': `${endY}px`,
+                animation: `particle-float ${duration}s ease-in-out ${delay}s infinite`,
+                zIndex: 1,
+                opacity: 0
+              }}
+            />
+          );
+        })}
+
+        {/* Content Container */}
+        <div style={{
+          position: 'relative',
+          zIndex: 10,
+          maxWidth: '600px',
+          width: '100%',
+          animation: 'fade-in-up 1s ease-out'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderRadius: '20px',
+            padding: '60px 45px',
+            border: '1px solid rgba(59, 130, 246, 0.15)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
+          }}>
+            
+            {/* Top Badge */}
+            <div style={{
+              textAlign: 'center',
+              marginBottom: '30px'
+            }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: '50px',
+                padding: '6px 18px',
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#60a5fa',
+                letterSpacing: '1px',
+                fontFamily: "'Rajdhani', sans-serif",
+                textTransform: 'uppercase'
+              }}>
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  background: '#3b82f6',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 10px #3b82f6',
+                  animation: 'subtle-pulse 2s ease-in-out infinite'
+                }} />
+                Round 1 • Case File Distribution
+              </div>
+            </div>
+
+            {/* Main Title */}
+            <h1 style={{
+              fontSize: '68px',
+              fontWeight: '900',
+              background: 'linear-gradient(180deg, #ffffff 0%, #3b82f6 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              marginBottom: '16px',
+              textAlign: 'center',
+              fontFamily: "'Orbitron', monospace",
+              letterSpacing: '3px',
+              lineHeight: '1',
+              textShadow: '0 0 80px rgba(59, 130, 246, 0.3)'
+            }}>
+              ANVAKRIT 2.0
+            </h1>
+
+            {/* Tagline */}
+            <div style={{
+              textAlign: 'center',
+              marginBottom: '12px'
+            }}>
+              <p style={{
+                color: '#60a5fa',
+                fontSize: '16px',
+                margin: 0,
+                fontWeight: '600',
+                letterSpacing: '4px',
+                fontFamily: "'Rajdhani', sans-serif",
+                textTransform: 'uppercase'
+              }}>
+                Unmask Truth in Bytes
+              </p>
+            </div>
+
+            {/* Subtitle */}
+            <p style={{
+              color: '#94a3b8',
+              fontSize: '15px',
+              marginBottom: '40px',
+              textAlign: 'center',
+              fontWeight: '500',
+              fontFamily: "'Rajdhani', sans-serif",
+              letterSpacing: '1px'
+            }}>
+              Crime Scene Investigation Competition
+            </p>
+          
+            {/* Info Box */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.04)',
+              border: '1px solid rgba(59, 130, 246, 0.15)',
+              borderRadius: '12px',
+              padding: '22px',
+              marginBottom: '32px'
+            }}>
+              <p style={{
+                color: '#cbd5e1',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                <span style={{ color: '#60a5fa', fontWeight: '600' }}>Authentication Required</span>
+                <br />
+                Access the secure portal to receive your classified case file and begin the 24-hour investigation window.
+              </p>
+            </div>
+
+            {/* CTA Button */}
+            <Link href="/scan" style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+              color: '#ffffff',
+              padding: '16px 32px',
+              borderRadius: '10px',
+              fontWeight: '600',
+              textDecoration: 'none',
+              fontSize: '15px',
+              textAlign: 'center',
+              boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
+              transition: 'all 0.3s ease',
+              letterSpacing: '1px',
+              border: 'none',
+              fontFamily: "'Rajdhani', sans-serif",
+              textTransform: 'uppercase'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 15px 40px rgba(59, 130, 246, 0.4)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.3)';
+            }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <span>Access Portal</span>
+            </Link>
+
+            {/* Footer */}
+            <div style={{
+              marginTop: '32px',
+              paddingTop: '20px',
+              borderTop: '1px solid rgba(59, 130, 246, 0.08)',
+              textAlign: 'center'
+            }}>
+              <p style={{
+                color: '#475569',
+                fontSize: '12px',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif",
+                letterSpacing: '0.3px'
+              }}>
+                National Forensic Sciences University
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+scan.js
+import { useEffect, useState } from 'react';
+import { useSession, signIn } from 'next-auth/react';
+import { useRouter } from 'next/router';
+
+export default function ScanPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      handleTrackScan();
+    }
+  }, [status, session]);
+
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setProgress(prev => prev >= 90 ? 90 : prev + 10);
+      }, 200);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+
+  const handleTrackScan = async () => {
+    setLoading(true);
+    setProgress(0);
+    try {
+      const scanTimestamp = new Date().toISOString();
+      
+      const response = await fetch('/api/track-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scanTimestamp }),
+      });
+
+      const data = await response.json();
+      setProgress(100);
+
+      if (data.success) {
+        setTimeout(() => {
+          router.push({
+            pathname: '/dashboard',
+            query: {
+              teamName: data.teamName,
+              startTime: data.startTime,
+              endTime: data.endTime,
+              firstScanner: data.firstScanner,
+              isFirst: !data.alreadyStarted,
+              currentUser: session.user.email,
+            }
+          });
+        }, 500);
+      } else {
+        setError(data.message || 'Failed to process scan');
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setError('An error occurred. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  if (loading || status === 'loading') {
+    return (
+      <>
+        <style jsx>{`
+          @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600&display=swap');
+          @keyframes radar-sweep {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+            100% { transform: scale(0.8); opacity: 0.6; }
+          }
+          @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+        `}</style>
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#030712',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Grid Background */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `
+              linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px'
+          }} />
+
+          {/* Radar Animation */}
+          <div style={{
+            position: 'relative',
+            width: '180px',
+            height: '180px',
+            marginBottom: '40px'
+          }}>
+            {/* Pulse Rings */}
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '100%',
+                  height: '100%',
+                  border: '2px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  animation: `pulse-ring ${2 + i * 0.5}s ease-in-out infinite`,
+                  animationDelay: `${i * 0.3}s`
+                }}
+              />
+            ))}
+            {/* Radar Circle */}
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '130px',
+              height: '130px',
+              background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
+              borderRadius: '50%',
+              transform: 'translate(-50%, -50%)',
+              border: '1px solid rgba(59, 130, 246, 0.2)'
+            }}>
+              {/* Sweeping Line */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '2px',
+                height: '65px',
+                background: 'linear-gradient(to bottom, #3b82f6, transparent)',
+                transformOrigin: 'top center',
+                transform: 'translate(-50%, 0)',
+                animation: 'radar-sweep 3s linear infinite',
+                boxShadow: '0 0 10px #3b82f6'
+              }} />
+            </div>
+            {/* Center Dot */}
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '16px',
+              height: '16px',
+              background: '#3b82f6',
+              borderRadius: '50%',
+              transform: 'translate(-50%, -50%)',
+              boxShadow: '0 0 25px rgba(59, 130, 246, 0.8)',
+              zIndex: 1
+            }} />
+          </div>
+
+          <div style={{
+            textAlign: 'center',
+            color: 'white',
+            maxWidth: '400px'
+          }}>
+            <p style={{
+              fontSize: '24px',
+              fontWeight: '700',
+              color: '#60a5fa',
+              marginBottom: '12px',
+              fontFamily: "'Orbitron', sans-serif",
+              letterSpacing: '2px',
+              textShadow: '0 0 20px rgba(96, 165, 250, 0.5)'
+            }}>
+              AUTHENTICATING
+            </p>
+            <p style={{
+              fontSize: '14px',
+              color: '#94a3b8',
+              marginBottom: '30px',
+              fontFamily: "'Rajdhani', sans-serif",
+              letterSpacing: '0.5px'
+            }}>
+              Verifying credentials • Initializing secure connection
+            </p>
+
+            {/* Progress Bar */}
+            <div style={{
+              width: '100%',
+              height: '6px',
+              background: 'rgba(59, 130, 246, 0.15)',
+              borderRadius: '10px',
+              overflow: 'hidden',
+              marginBottom: '15px',
+              border: '1px solid rgba(59, 130, 246, 0.2)'
+            }}>
+              <div style={{
+                width: `${progress}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #0ea5e9 100%)',
+                backgroundSize: '200% 100%',
+                borderRadius: '10px',
+                boxShadow: '0 0 15px rgba(59, 130, 246, 0.6)',
+                transition: 'width 0.3s ease',
+                animation: 'shimmer 2s linear infinite'
+              }} />
+            </div>
+            <p style={{
+              fontSize: '12px',
+              color: '#60a5fa',
+              fontFamily: "'Rajdhani', sans-serif",
+              fontWeight: '600',
+              letterSpacing: '1px'
+            }}>
+              {progress}% COMPLETE
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <style jsx>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @keyframes shield-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.8; }
+          50% { transform: scale(1.05); opacity: 1; }
+        }
+        @keyframes fingerprint {
+          0% { opacity: 0; transform: scale(0.8); }
+          50% { opacity: 0.6; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.2); }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+      `}</style>
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#030712',
+        padding: '20px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Background Grid */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `
+            linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px'
+        }} />
+
+        {/* Scanning Line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: '-100%',
+          width: '100%',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%)',
+          boxShadow: '0 0 30px rgba(59, 130, 246, 0.6)',
+          animation: 'scanline 8s linear infinite',
+          zIndex: 1
+        }} />
+
+        <div style={{
+          position: 'relative',
+          zIndex: 2,
+          maxWidth: '520px',
+          width: '100%',
+          animation: 'fade-in 0.8s ease-out'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '20px',
+            padding: '50px 40px',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              {/* Security Icon */}
+              <div style={{
+                width: '90px',
+                height: '90px',
+                margin: '0 auto 30px',
+                background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                animation: 'shield-pulse 3s ease-in-out infinite'
+              }}>
+                {[...Array(3)].map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      position: 'absolute',
+                      width: '55px',
+                      height: '55px',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '50%',
+                      animation: `fingerprint ${2 + i * 0.5}s ease-in-out infinite`,
+                      animationDelay: `${i * 0.3}s`
+                    }}
+                  />
+                ))}
+                <svg style={{ 
+                  width: '45px', 
+                  height: '45px', 
+                  color: '#3b82f6', 
+                  filter: 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.6))', 
+                  zIndex: 1 
+                }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
+
+              {/* Header */}
+              <div style={{
+                background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.08), transparent)',
+                padding: '12px',
+                marginBottom: '24px',
+                borderRadius: '12px',
+                border: '1px solid rgba(59, 130, 246, 0.1)'
+              }}>
+                <h1 style={{
+                  fontSize: '32px',
+                  fontWeight: '700',
+                  background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  marginBottom: '8px',
+                  fontFamily: "'Orbitron', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  AUTHENTICATION
+                </h1>
+                <p style={{
+                  color: '#94a3b8',
+                  marginBottom: '0',
+                  fontSize: '14px',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '0.5px'
+                }}>
+                  Anvakrit 2.0 › Round 1 › Verification Protocol
+                </p>
+              </div>
+
+              {error && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderLeft: '4px solid #ef4444',
+                  borderRadius: '12px',
+                  padding: '18px',
+                  marginBottom: '24px'
+                }}>
+                  <p style={{ 
+                    color: '#fca5a5', 
+                    fontSize: '14px', 
+                    margin: 0, 
+                    fontWeight: '600',
+                    fontFamily: "'Inter', sans-serif"
+                  }}>
+                    ⚠️ {error}
+                  </p>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderLeft: '4px solid #3b82f6',
+                borderRadius: '12px',
+                padding: '20px',
+                marginBottom: '28px',
+                textAlign: 'left'
+              }}>
+                <p style={{
+                  color: '#60a5fa',
+                  fontWeight: '600',
+                  marginBottom: '14px',
+                  fontSize: '13px',
+                  letterSpacing: '1px',
+                  textTransform: 'uppercase',
+                  fontFamily: "'Rajdhani', sans-serif"
+                }}>
+                  Security Protocol
+                </p>
+                <ul style={{
+                  color: '#cbd5e1',
+                  fontSize: '14px',
+                  lineHeight: '2',
+                  paddingLeft: '20px',
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif"
+                }}>
+                  <li>Authenticate using <strong style={{ color: '#60a5fa' }}>registered email</strong></li>
+                  <li>First member initiates <strong style={{ color: '#3b82f6' }}>24-hour timer</strong></li>
+                  <li>All team members share <strong>unified deadline</strong></li>
+                  <li>Timer activation is <strong style={{ color: '#fca5a5' }}>irreversible</strong></li>
+                </ul>
+              </div>
+
+              {/* Google Sign In Button */}
+              <button
+                onClick={() => signIn('google')}
+                disabled={error !== null}
+                style={{
+                  width: '100%',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                  color: '#ffffff',
+                  fontWeight: '600',
+                  padding: '16px 28px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  cursor: error ? 'not-allowed' : 'pointer',
+                  opacity: error ? 0.4 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  fontSize: '15px',
+                  boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
+                  transition: 'all 0.3s ease',
+                  letterSpacing: '0.5px',
+                  textTransform: 'uppercase',
+                  fontFamily: "'Rajdhani', sans-serif"
+                }}
+                onMouseOver={(e) => {
+                  if (!error) {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 15px 40px rgba(59, 130, 246, 0.4)';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!error) {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.3)';
+                  }
+                }}
+              >
+                <svg style={{ width: '20px', height: '20px' }} viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span>Initialize with Google</span>
+              </button>
+
+              {/* Footer */}
+              <p style={{
+                color: '#64748b',
+                fontSize: '12px',
+                marginTop: '24px',
+                lineHeight: '1.7',
+                fontFamily: "'Inter', sans-serif",
+                borderTop: '1px solid rgba(59, 130, 246, 0.1)',
+                paddingTop: '20px'
+              }}>
+                › By proceeding, you confirm receipt of case materials<br/>
+                › System will activate 24-hour investigation window<br/>
+                › National Forensic Sciences University
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+success.js
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import Link from 'next/link';
+
+export default function SuccessPage() {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  
+  const { teamName, startTime, endTime, firstScanner, isFirst } = router.query;
+
+  useEffect(() => {
+    if (!endTime) return;
+
+    const updateTimer = () => {
+      const now = new Date();
+      const end = new Date(endTime);
+      const difference = end - now;
+
+      if (difference <= 0) {
+        setTimeRemaining({ hours: 0, minutes: 0, seconds: 0, expired: true });
+        return;
+      }
+
+      const hours = Math.floor(difference / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+      setTimeRemaining({ hours, minutes, seconds, expired: false });
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [endTime]);
+
+  if (!teamName) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%)'
+      }}>
+        <div style={{ color: 'white' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  const formatDate = (isoString) => {
+    return new Date(isoString).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'full',
+      timeStyle: 'short'
+    });
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%)',
+      padding: '40px 20px'
+    }}>
+      <div style={{
+        maxWidth: '700px',
+        margin: '0 auto',
+        background: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(10px)',
+        borderRadius: '20px',
+        padding: '40px',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+      }}>
+        
+        {/* Success Icon */}
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{
+            width: '80px',
+            height: '80px',
+            margin: '0 auto 20px',
+            background: 'rgba(34, 197, 94, 0.2)',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <svg style={{ width: '40px', height: '40px', color: '#86efac' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          
+          <h1 style={{
+            fontSize: '36px',
+            fontWeight: 'bold',
+            color: 'white',
+            marginBottom: '8px'
+          }}>
+            {isFirst === 'true' ? '✅ Timer Started!' : '✅ Receipt Confirmed!'}
+          </h1>
+          <p style={{
+            color: '#93c5fd',
+            fontSize: '18px'
+          }}>
+            Team: <strong>{teamName}</strong>
+          </p>
+        </div>
+
+        {/* Countdown Timer */}
+        {timeRemaining && !timeRemaining.expired && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(147, 51, 234, 0.2) 100%)',
+            border: '2px solid rgba(59, 130, 246, 0.4)',
+            borderRadius: '15px',
+            padding: '25px',
+            marginBottom: '30px'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{
+                color: '#93c5fd',
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '15px'
+              }}>
+                ⏰ TEAM DEADLINE - SHARED COUNTDOWN
+              </p>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '15px',
+                marginBottom: '15px'
+              }}>
+                {['hours', 'minutes', 'seconds'].map((unit) => (
+                  <div key={unit} style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '10px',
+                    padding: '15px',
+                    minWidth: '80px'
+                  }}>
+                    <div style={{
+                      fontSize: '36px',
+                      fontWeight: 'bold',
+                      color: 'white'
+                    }}>
+                      {String(timeRemaining[unit]).padStart(2, '0')}
+                    </div>
+                    <div style={{
+                      color: '#93c5fd',
+                      fontSize: '11px',
+                      textTransform: 'uppercase',
+                      marginTop: '5px'
+                    }}>
+                      {unit}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Details */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.05)',
+          borderRadius: '15px',
+          padding: '25px',
+          marginBottom: '25px'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            paddingBottom: '15px',
+            marginBottom: '15px'
+          }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
+              Timer Started By:
+            </span>
+            <span style={{ color: 'white', fontWeight: '600', fontSize: '14px' }}>
+              {firstScanner}
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            paddingBottom: '15px',
+            marginBottom: '15px'
+          }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
+              Start Time:
+            </span>
+            <span style={{ color: 'white', fontWeight: '600', fontSize: '14px' }}>
+              {formatDate(startTime)}
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
+              Deadline:
+            </span>
+            <span style={{ color: '#fca5a5', fontWeight: 'bold', fontSize: '14px' }}>
+              {formatDate(endTime)}
+            </span>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div style={{
+          background: 'rgba(251, 191, 36, 0.1)',
+          borderLeft: '4px solid #fbbf24',
+          borderRadius: '0 10px 10px 0',
+          padding: '20px',
+          marginBottom: '25px'
+        }}>
+          <p style={{
+            color: '#fcd34d',
+            fontWeight: '600',
+            marginBottom: '10px',
+            fontSize: '14px'
+          }}>
+            📋 Important Information:
+          </p>
+          <ul style={{
+            color: 'rgba(255, 255, 255, 0.8)',
+            fontSize: '13px',
+            lineHeight: '1.8',
+            paddingLeft: '20px',
+            margin: 0
+          }}>
+            <li>All team members share the same 24-hour deadline</li>
+            <li>Case file has been provided to you offline</li>
+            <li>Submit your solution before the deadline expires</li>
+            <li>Only one submission per team will be accepted</li>
+          </ul>
+        </div>
+
+        {/* Footer */}
+        <div style={{ textAlign: 'center' }}>
+          <p style={{
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontSize: '13px',
+            marginBottom: '15px'
+          }}>
+            Scanned by: <strong>{session?.user?.email}</strong>
+          </p>
+          <Link href="/" style={{
+            color: '#93c5fd',
+            fontSize: '14px',
+            textDecoration: 'underline'
+          }}>
+            Back to Home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+timesup.js
+import { useEffect, useState } from 'react';
+
+export default function TimesUpPage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return (
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @keyframes alarm-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.8; }
+          50% { transform: scale(1.1); opacity: 1; }
+        }
+        @keyframes warning-flash {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+        @keyframes particle-float {
+          0% { transform: translate(0, 0); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+      `}</style>
+
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#030712',
+        padding: '20px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Grid Background */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `
+            linear-gradient(rgba(239, 68, 68, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(239, 68, 68, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px'
+        }} />
+
+        {/* Warning Scanning Line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: '-100%',
+          width: '100%',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #ef4444 50%, transparent 100%)',
+          boxShadow: '0 0 30px rgba(239, 68, 68, 0.6)',
+          animation: 'scanline 6s linear infinite',
+          zIndex: 1
+        }} />
+
+        {/* Flashing Warning Indicators */}
+        {mounted && [0, 1].map((idx) => (
+          <div
+            key={`warning-${idx}`}
+            style={{
+              position: 'absolute',
+              [idx === 0 ? 'left' : 'right']: '50px',
+              top: '50px',
+              width: '24px',
+              height: '24px',
+              background: '#ef4444',
+              borderRadius: '50%',
+              boxShadow: '0 0 30px #ef4444',
+              animation: 'warning-flash 1s ease-in-out infinite',
+              animationDelay: `${idx * 0.5}s`
+            }}
+          />
+        ))}
+
+        {/* Particles */}
+        {mounted && [...Array(15)].map((_, i) => {
+          const startX = Math.random() * 100;
+          const startY = Math.random() * 100;
+          const endX = (Math.random() - 0.5) * 200;
+          const endY = (Math.random() - 0.5) * 200;
+          
+          return (
+            <div
+              key={`particle-${i}`}
+              style={{
+                position: 'absolute',
+                left: `${startX}%`,
+                top: `${startY}%`,
+                width: '2px',
+                height: '2px',
+                background: '#ef4444',
+                borderRadius: '50%',
+                boxShadow: '0 0 6px #ef4444',
+                '--tx': `${endX}px`,
+                '--ty': `${endY}px`,
+                animation: `particle-float ${12 + Math.random() * 10}s ease-in-out infinite`,
+                animationDelay: `${Math.random() * 5}s`,
+                zIndex: 1,
+                opacity: 0
+              }}
+            />
+          );
+        })}
+
+        <div style={{
+          maxWidth: '700px',
+          width: '100%',
+          position: 'relative',
+          zIndex: 10,
+          animation: 'fade-in 0.8s ease-out'
+        }}>
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '24px',
+            padding: '60px 50px',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5), 0 0 50px rgba(239, 68, 68, 0.1)',
+            textAlign: 'center'
+          }}>
+            
+            {/* Alarm Icon */}
+            <div style={{
+              position: 'relative',
+              width: '140px',
+              height: '140px',
+              margin: '0 auto 40px'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '120px',
+                height: '120px',
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderRadius: '50%',
+                transform: 'translate(-50%, -50%)',
+                animation: 'alarm-pulse 1.5s ease-in-out infinite'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '140px',
+                height: '140px',
+                border: '2px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '50%',
+                transform: 'translate(-50%, -50%)',
+                animation: 'alarm-pulse 1.5s ease-in-out infinite 0.2s'
+              }} />
+              <svg style={{ 
+                width: '80px', 
+                height: '80px', 
+                color: '#ef4444',
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                filter: 'drop-shadow(0 0 20px #ef4444)',
+                animation: 'alarm-pulse 1.5s ease-in-out infinite'
+              }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <div style={{
+              background: 'linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.15), transparent)',
+              padding: '20px',
+              borderRadius: '15px',
+              marginBottom: '30px'
+            }}>
+              <h1 style={{
+                fontSize: '52px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #ef4444, #fca5a5)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                marginBottom: '12px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '2px',
+                lineHeight: '1'
+              }}>
+                TIME EXPIRED
+              </h1>
+              <p style={{
+                color: '#fca5a5',
+                fontSize: '18px',
+                margin: 0,
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '2px',
+                animation: 'warning-flash 1.5s ease-in-out infinite',
+                textTransform: 'uppercase',
+                fontWeight: '600'
+              }}>
+                ⚠️ 24-Hour Window Closed
+              </p>
+            </div>
+
+            {/* Main Message */}
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '15px',
+              padding: '28px',
+              marginBottom: '28px'
+            }}>
+              <div style={{
+                display: 'inline-block',
+                background: 'rgba(239, 68, 68, 0.2)',
+                borderRadius: '10px',
+                padding: '10px 24px',
+                marginBottom: '18px'
+              }}>
+                <p style={{
+                  color: '#fca5a5',
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  margin: 0,
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px',
+                  textTransform: 'uppercase'
+                }}>
+                  INVESTIGATION WINDOW: TERMINATED
+                </p>
+              </div>
+              <p style={{
+                color: '#cbd5e1',
+                fontSize: '15px',
+                lineHeight: '1.9',
+                marginBottom: '16px',
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                The 24-hour investigation period has concluded. All access to case materials has been <strong style={{ color: '#fca5a5' }}>permanently revoked</strong>.
+              </p>
+              <p style={{
+                color: '#94a3b8',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                If your team submitted findings via the secured form, your entry has been recorded. Only submissions received within the active window will be evaluated.
+              </p>
+            </div>
+
+            {/* Status Cards */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '14px',
+              marginBottom: '28px'
+            }}>
+              {[
+                { icon: '🔒', label: 'Portal Status', value: 'LOCKED' },
+                { icon: '⏱️', label: 'Time Remaining', value: '00:00:00' },
+                { icon: '📊', label: 'Case Status', value: 'ARCHIVED' }
+              ].map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: '12px',
+                    padding: '20px 16px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                >
+                  <div style={{ fontSize: '28px', marginBottom: '10px' }}>{item.icon}</div>
+                  <div style={{
+                    color: '#94a3b8',
+                    fontSize: '11px',
+                    marginBottom: '8px',
+                    fontFamily: "'Rajdhani', sans-serif",
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {item.label}
+                  </div>
+                  <div style={{
+                    color: '#fca5a5',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    fontFamily: "'Orbitron', sans-serif"
+                  }}>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Info Box */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderLeft: '4px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '24px',
+              marginBottom: '28px'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '14px',
+                justifyContent: 'center'
+              }}>
+                <svg style={{ width: '22px', height: '22px', color: '#60a5fa' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 style={{
+                  color: '#60a5fa',
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  margin: 0,
+                  fontFamily: "'Orbitron', sans-serif",
+                  letterSpacing: '0.5px'
+                }}>
+                  WHAT HAPPENS NOW?
+                </h3>
+              </div>
+              <ul style={{
+                color: '#cbd5e1',
+                fontSize: '13px',
+                lineHeight: '2.2',
+                paddingLeft: '20px',
+                margin: 0,
+                textAlign: 'left',
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                <li>If submitted: Your entry is under evaluation</li>
+                <li>Results will be announced via email</li>
+                <li>Late submissions cannot be accepted</li>
+                <li>Check your registered email for updates</li>
+              </ul>
+            </div>
+
+            {/* Contact Box */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{
+                color: '#60a5fa',
+                fontSize: '14px',
+                lineHeight: '1.7',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif"
+              }}>
+                📧 <strong>Support Contact:</strong><br/>
+                For queries or technical issues:<br/>
+                <strong style={{ fontSize: '15px', color: '#3b82f6' }}>anvakrit@nfsu.ac.in</strong>
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.3), transparent)',
+              marginBottom: '20px'
+            }} />
+
+            <p style={{
+              color: '#64748b',
+              fontSize: '11px',
+              fontFamily: "'Rajdhani', sans-serif",
+              letterSpacing: '1px',
+              marginBottom: '8px',
+              textTransform: 'uppercase'
+            }}>
+              ▓▒░ INVESTIGATION TERMINATED ░▒▓
+            </p>
+            <p style={{
+              color: '#475569',
+              fontSize: '11px',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              NATIONAL FORENSIC SCIENCES UNIVERSITY
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+

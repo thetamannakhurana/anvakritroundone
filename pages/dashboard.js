@@ -136,6 +136,92 @@ export default function DashboardPage() {
           90% { opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
+                  /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+          body {
+            padding: 1rem;
+          }
+
+          h1 {
+            font-size: 2rem !important;
+            padding: 0 !important;
+          }
+
+          h2 {
+            font-size: 1.25rem !important;
+          }
+
+          /* Timer - Make horizontal and compact */
+          div[style*="gridTemplateColumns: 'repeat(3, 1fr)'"] {
+            gap: 0.5rem !important;
+            max-width: 100% !important;
+          }
+
+          /* Timer numbers smaller on mobile */
+          div[style*="fontSize: '52px'"] div {
+            font-size: 2.5rem !important;
+            padding: 1.5rem 1rem !important;
+          }
+
+          /* Timer labels */
+          div[style*="fontSize: '12px'"] {
+            font-size: 0.7rem !important;
+          }
+
+          /* Buttons full-width */
+          button {
+            width: 100% !important;
+            padding: 1rem !important;
+            font-size: 0.95rem !important;
+            margin-bottom: 0.75rem !important;
+          }
+
+          /* Cards - less padding */
+          div[style*="padding: '30px'"] {
+            padding: 1.5rem !important;
+          }
+
+          div[style*="padding: '40px'"] {
+            padding: 1.5rem !important;
+          }
+
+          div[style*="padding: '35px'"] {
+            padding: 1.5rem !important;
+          }
+
+          /* Grid to single column */
+          div[style*="gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))'"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          h1 {
+            font-size: 1.75rem !important;
+          }
+
+          div[style*="fontSize: '52px'"] div {
+            font-size: 2rem !important;
+            padding: 1rem 0.75rem !important;
+          }
+
+          div[style*="fontSize: '48px'"] h1 {
+            font-size: 2rem !important;
+          }
+        }
+
+        /* Landscape mode */
+        @media (max-width: 768px) and (orientation: landscape) {
+          div[style*="gridTemplateColumns: 'repeat(3, 1fr)'"] {
+            gap: 0.5rem !important;
+          }
+
+          div[style*="fontSize: '52px'"] div {
+            font-size: 1.75rem !important;
+            padding: 1rem 0.5rem !important;
+          }
+        }
+
       `}</style>
 
       <div style={{

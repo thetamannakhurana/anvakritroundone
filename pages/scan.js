@@ -256,6 +256,45 @@ export default function ScanPage() {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(100vh); }
         }
+                  /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+          div[style*="padding: '50px 40px'"] {
+            padding: 2rem 1.25rem !important;
+          }
+
+          h1 {
+            font-size: 1.75rem !important;
+          }
+
+          p {
+            font-size: 0.95rem !important;
+          }
+
+          button {
+            padding: 1rem 1.5rem !important;
+            font-size: 0.95rem !important;
+            width: 100% !important;
+            max-width: 320px !important;
+          }
+
+          /* Security icon */
+          div[style*="width: '90px'"] {
+            width: 70px !important;
+            height: 70px !important;
+          }
+
+          svg {
+            width: 35px !important;
+            height: 35px !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          h1 {
+            font-size: 1.5rem !important;
+          }
+        }
+
       `}</style>
       <div style={{
         minHeight: '100vh',
