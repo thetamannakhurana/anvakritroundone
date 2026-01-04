@@ -160,7 +160,7 @@ export default function HomePage() {
             {/* Main Title */}
             <h1 style={{
   fontSize: typeof window !== 'undefined' && window.innerWidth <= 480 ? '2.5rem' : 
-           (typeof window !== 'undefined' && window.innerWidth <= 768 ? '3rem' : '68px'),
+           (typeof window !== 'undefined' && window.innerWidth <= 768 ? '3.5rem' : '68px'),
   fontWeight: '900',
   background: 'linear-gradient(180deg, #ffffff 0%, #3b82f6 100%)',
   backgroundClip: 'text',
@@ -169,13 +169,12 @@ export default function HomePage() {
   marginBottom: '16px',
   textAlign: 'center',
   fontFamily: "'Orbitron', monospace",
-  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '1.5px' : '3px',
+  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '2px' : '3px',
   lineHeight: '1',
   textShadow: '0 0 80px rgba(59, 130, 246, 0.3)'
 }}>
   ANVAKRIT 2.0
 </h1>
-
 
             {/* Tagline */}
             <div style={{
