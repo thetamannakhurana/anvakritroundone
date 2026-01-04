@@ -981,7 +981,6 @@ export default function DashboardPage() {
               letterSpacing: '0.5px'
             }}>
               TECHNICAL SUPPORT: csi_dc@nfsu.ac.in
-              Or you can directly message on the Whatsapp Group
             </p>
             <p style={{
               color: '#475569',
