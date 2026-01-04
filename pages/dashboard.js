@@ -136,47 +136,51 @@ export default function DashboardPage() {
           90% { opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
-                /* MOBILE TIMER FIX */
+        /* MOBILE TIMER FIX - SPECIFIC */
         @media (max-width: 768px) {
-          /* Make timer container scrollable horizontally if needed */
-          div[style*="maxWidth: '600px'"] {
+          /* Container */
+          div[style*="maxWidth: '600px'"][style*="gridTemplateColumns"] {
             max-width: 100% !important;
-            padding: 0 0.5rem !important;
+            padding: 0 10px !important;
+            gap: 8px !important;
           }
 
-          /* Reduce timer number size */
-          div[style*="fontSize: '52px'"] {
-            font-size: 2.5rem !important;
+          /* Timer number - SMALLER */
+          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
+            font-size: 2.25rem !important;
+            line-height: 1 !important;
           }
 
-          /* Reduce timer box padding */
-          div[style*="padding: '28px 20px'"] {
-            padding: 1.25rem 0.75rem !important;
+          /* Timer box - LESS PADDING */
+          div[style*="padding: '28px 20px'"][style*="borderRadius: '16px'"] {
+            padding: 1rem 0.5rem !important;
           }
 
-          /* Reduce gap between timer boxes */
-          div[style*="gap: '20px'"] {
-            gap: 0.5rem !important;
-          }
-
-          /* Timer label smaller */
-          div[style*="fontSize: '12px'"] {
-            font-size: 0.65rem !important;
+          /* Timer label - TINY */
+          div[style*="fontSize: '12px'"][style*="letterSpacing: '1.5px'"] {
+            font-size: 0.6rem !important;
+            letter-spacing: 0.5px !important;
           }
         }
 
         @media (max-width: 480px) {
-          /* Even smaller on small phones */
-          div[style*="fontSize: '52px'"] {
-            font-size: 2rem !important;
+          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
+            font-size: 1.85rem !important;
           }
 
-          div[style*="padding: '28px 20px'"] {
-            padding: 1rem 0.5rem !important;
+          div[style*="padding: '28px 20px'"][style*="borderRadius: '16px'"] {
+            padding: 0.85rem 0.35rem !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          /* Very small phones */
+          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
+            font-size: 1.65rem !important;
           }
 
-          div[style*="gap: '20px'"] {
-            gap: 0.35rem !important;
+          div[style*="gridTemplateColumns"][style*="gap: '20px'"] {
+            gap: 6px !important;
           }
         }
 
