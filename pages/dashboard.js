@@ -264,51 +264,59 @@ export default function DashboardPage() {
             animation: 'fade-in 0.6s ease-out'
           }}>
             <div style={{
-              display: 'inline-block',
-              background: 'rgba(15, 23, 42, 0.7)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
-              borderRadius: '20px',
-              padding: '30px 50px',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)'
-            }}>
+  display: 'inline-block',
+  background: 'rgba(15, 23, 42, 0.7)',
+  backdropFilter: 'blur(20px)',
+  border: '1px solid rgba(59, 130, 246, 0.2)',
+  borderRadius: '20px',
+  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '20px 16px' : '30px 50px',
+  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+  width: typeof window !== 'undefined' && window.innerWidth <= 768 ? '95%' : 'auto',
+  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : 'none'
+}}>
+
               <div style={{
-                fontSize: '13px',
-                color: '#60a5fa',
-                fontFamily: "'Rajdhani', sans-serif",
-                marginBottom: '12px',
-                letterSpacing: '2px',
-                textTransform: 'uppercase',
-                fontWeight: '600'
-              }}>
+  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.75rem' : '13px',
+  color: '#60a5fa',
+  fontFamily: "'Rajdhani', sans-serif",
+  marginBottom: '12px',
+  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '1px' : '2px',
+  textTransform: 'uppercase',
+  fontWeight: '600'
+}}>
+
                 [OPERATION: ACTIVE]
               </div>
               <h1 style={{
-                fontSize: '48px',
-                fontWeight: '800',
-                background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '12px',
-                fontFamily: "'Orbitron', sans-serif",
-                letterSpacing: '2px',
-                lineHeight: '1'
-              }}>
+  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '2rem' : '48px',
+  fontWeight: '800',
+  background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
+  backgroundClip: 'text',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  marginBottom: '12px',
+  fontFamily: "'Orbitron', sans-serif",
+  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '1px' : '2px',
+  lineHeight: '1'
+}}>
+
                 ANVAKRIT 2.0
               </h1>
               <div style={{
-                display: 'inline-block',
-                background: 'rgba(59, 130, 246, 0.15)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                borderRadius: '10px',
-                padding: '8px 20px',
-                color: '#60a5fa',
-                fontSize: '15px',
-                fontWeight: '600',
-                fontFamily: "'Rajdhani', sans-serif",
-                letterSpacing: '1px'
-              }}>
+  display: 'inline-block',
+  background: 'rgba(59, 130, 246, 0.15)',
+  border: '1px solid rgba(59, 130, 246, 0.3)',
+  borderRadius: '10px',
+  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '6px 12px' : '8px 20px',
+  color: '#60a5fa',
+  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.85rem' : '15px',
+  fontWeight: '600',
+  fontFamily: "'Rajdhani', sans-serif",
+  letterSpacing: '1px',
+  wordBreak: 'break-word',
+  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : 'none'
+}}>
+
                 TEAM: {teamName}
               </div>
             </div>
