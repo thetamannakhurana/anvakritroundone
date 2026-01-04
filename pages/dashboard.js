@@ -91,20 +91,43 @@ export default function DashboardPage() {
   }
 
   const formatDate = (dateString) => {
-    if (typeof dateString === 'string' && !dateString.includes('T')) {
-      return dateString;
+  if (typeof dateString === 'string' && !dateString.includes('T')) {
+    return dateString;
+  }
+  
+  const date = new Date(dateString);
+  
+  // Get day with suffix (1st, 2nd, 3rd, 4th, etc.)
+  const day = date.getDate();
+  const suffix = (day) => {
+    if (day > 3 && day < 21) return 'th';
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
     }
-    
-    return new Date(dateString).toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   };
+  
+  // Format time (12-hour with AM/PM)
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  const minuteStr = minutes.toString().padStart(2, '0');
+  
+  // Get month (short form)
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  
+  // Get year
+  const year = date.getFullYear();
+  
+  // Final format: "2:52 PM, 4th Jan 2026"
+  return `${hour12}:${minuteStr} ${ampm}, ${day}${suffix(day)} ${month} ${year}`;
+};
+
 
   const getTimerColor = () => {
     if (!timeRemaining) return '#3b82f6';
