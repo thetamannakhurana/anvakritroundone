@@ -23,27 +23,26 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  const { teamName } = req.body;
+  const { teamName, answers } = req.body;
+  const userEmail = session.user.email.toLowerCase().trim();
 
   try {
     const sheets = await getSheetsClient();
 
+    // Get current data
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: 'Sheet1!A:I',
+      range: 'Sheet1!A:P', // Extended to column N for answers
     });
 
     const rows = response.data.values;
     if (!rows || rows.length < 2) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'No teams found' 
-      });
+      return res.status(404).json({ success: false, message: 'Sheet data not found' });
     }
 
     const dataRows = rows.slice(1);
 
-    // Find the first row of this team
+    // Find team's first row
     let teamFirstRowIndex = -1;
     for (let i = 0; i < dataRows.length; i++) {
       if (dataRows[i][0] === teamName) {
@@ -53,32 +52,39 @@ export default async function handler(req, res) {
     }
 
     if (teamFirstRowIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: 'Team not found'
-      });
+      return res.status(404).json({ success: false, message: 'Team not found' });
     }
 
-    // Update status to "Completed"
+    // Update status to "Completed" and save answers
+    // Columns: I=Q1, J=Q2, K=Q3, L=Q4, M=Q5, N=Q6, O=Q7
     await sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: `Sheet1!I${teamFirstRowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [['Completed']],
-      },
+      range: `Sheet1!I${teamFirstRowIndex}:P${teamFirstRowIndex}`,
+valueInputOption: 'USER_ENTERED',
+requestBody: {
+  values: [[
+    'Completed',
+    answers.q1 || '',
+    answers.q2 || '',
+    answers.q3 || '',
+    answers.q4 || '',
+    answers.q5 || '',
+    answers.q6 || '',
+    answers.q7 || ''
+  ]],
+},
     });
 
     return res.status(200).json({
       success: true,
-      message: 'Timer ended successfully'
+      message: 'Answers submitted successfully'
     });
 
   } catch (error) {
     console.error('Error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to end timer',
+      error: 'Failed to submit answers',
       details: error.message
     });
   }

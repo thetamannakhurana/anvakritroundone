@@ -5,26 +5,30 @@ import { useEffect, useState } from 'react';
 export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [fontSize, setFontSize] = useState('68px');
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const updateFontSize = () => {
-      if (window.innerWidth <= 480) {
+    const updateSizes = () => {
+      const width = window.innerWidth;
+      setIsMobile(width <= 768);
+      
+      if (width <= 480) {
         setFontSize('2.5rem'); // 40px for small phones
-      } else if (window.innerWidth <= 768) {
+      } else if (width <= 768) {
         setFontSize('3.5rem'); // 56px for tablets
       } else {
         setFontSize('68px'); // Desktop
       }
     };
     
-    updateFontSize(); // Set initial size
-    window.addEventListener('resize', updateFontSize);
+    updateSizes(); // Set initial size
+    window.addEventListener('resize', updateSizes);
     
-    return () => window.removeEventListener('resize', updateFontSize);
+    return () => window.removeEventListener('resize', updateSizes);
   }, []);
 
 
@@ -64,7 +68,7 @@ export default function HomePage() {
         alignItems: 'center',
         justifyContent: 'center',
         background: '#030712',
-        padding: '40px 20px',
+        padding: isMobile ? '20px 16px' : '40px 20px',
         overflow: 'hidden'
       }}>
         
@@ -144,7 +148,7 @@ export default function HomePage() {
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderRadius: '20px',
-            padding: '60px 45px',
+            padding: isMobile ? '40px 24px' : '60px 45px',
             border: '1px solid rgba(59, 130, 246, 0.15)',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
           }}>
@@ -152,7 +156,7 @@ export default function HomePage() {
             {/* Top Badge */}
             <div style={{
               textAlign: 'center',
-              marginBottom: '30px'
+              marginBottom: isMobile ? '24px' : '30px'
             }}>
               <div style={{
                 display: 'inline-flex',
@@ -161,11 +165,11 @@ export default function HomePage() {
                 background: 'rgba(59, 130, 246, 0.1)',
                 border: '1px solid rgba(59, 130, 246, 0.2)',
                 borderRadius: '50px',
-                padding: '6px 18px',
-                fontSize: '12px',
+                padding: isMobile ? '6px 14px' : '6px 18px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: '600',
                 color: '#60a5fa',
-                letterSpacing: '1px',
+                letterSpacing: isMobile ? '0.5px' : '1px',
                 fontFamily: "'Rajdhani', sans-serif",
                 textTransform: 'uppercase'
               }}>
@@ -208,10 +212,10 @@ export default function HomePage() {
             }}>
               <p style={{
                 color: '#60a5fa',
-                fontSize: '16px',
+                fontSize: isMobile ? '14px' : '16px',
                 margin: 0,
                 fontWeight: '600',
-                letterSpacing: '4px',
+                letterSpacing: isMobile ? '2px' : '4px',
                 fontFamily: "'Rajdhani', sans-serif",
                 textTransform: 'uppercase'
               }}>
@@ -223,8 +227,8 @@ export default function HomePage() {
             {/* Subtitle */}
             <p style={{
               color: '#94a3b8',
-              fontSize: '15px',
-              marginBottom: '40px',
+              fontSize: isMobile ? '13px' : '15px',
+              marginBottom: isMobile ? '32px' : '40px',
               textAlign: 'center',
               fontWeight: '500',
               fontFamily: "'Rajdhani', sans-serif",
@@ -238,19 +242,19 @@ export default function HomePage() {
               background: 'rgba(59, 130, 246, 0.04)',
               border: '1px solid rgba(59, 130, 246, 0.15)',
               borderRadius: '12px',
-              padding: '22px',
-              marginBottom: '32px'
+              padding: isMobile ? '18px' : '22px',
+              marginBottom: isMobile ? '28px' : '32px'
             }}>
               <p style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
                 <span style={{ color: '#60a5fa', fontWeight: '600' }}>Authentication Required</span>
                 <br />
-                Access the secure portal to receive your classified case file and begin the 24-hour investigation window.
+                Access the secure portal with your registered email ID.
               </p>
             </div>
 
@@ -263,11 +267,11 @@ export default function HomePage() {
               gap: '10px',
               background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
               color: '#ffffff',
-              padding: '16px 32px',
+              padding: isMobile ? '14px 24px' : '16px 32px',
               borderRadius: '10px',
               fontWeight: '600',
               textDecoration: 'none',
-              fontSize: '15px',
+              fontSize: isMobile ? '14px' : '15px',
               textAlign: 'center',
               boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
               transition: 'all 0.3s ease',
@@ -285,7 +289,7 @@ export default function HomePage() {
               e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.3)';
             }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width={isMobile ? "16" : "18"} height={isMobile ? "16" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
@@ -295,17 +299,18 @@ export default function HomePage() {
 
             {/* Footer */}
             <div style={{
-              marginTop: '32px',
-              paddingTop: '20px',
+              marginTop: isMobile ? '28px' : '32px',
+              paddingTop: isMobile ? '18px' : '20px',
               borderTop: '1px solid rgba(59, 130, 246, 0.08)',
               textAlign: 'center'
             }}>
               <p style={{
                 color: '#475569',
-                fontSize: '12px',
+                fontSize: isMobile ? '11px' : '12px',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif",
-                letterSpacing: '0.3px'
+                letterSpacing: '0.3px',
+                lineHeight: '1.6'
               }}>
                 National Forensic Sciences University
               </p>

@@ -1,4 +1,4 @@
-pages folder then api folder in it I have auth folder in which I have [...nextauth].js and in api I have finish-early.js and track-scan.js and In pages I have _app.js, completed,js, dashboard,js, index.js, scan.js, success.js amd timesup.js
+pages folder then api folder in it I have auth folder in which I have [...nextauth].js and in api I have finish-early.js and track-scan.js and submit-answers.js and In pages I have _app.js, completed,js, dashboard,js, index.js, scan.js, success.js amd timesup.js
 
 nextauth
 import NextAuth from 'next-auth';
@@ -119,7 +119,8 @@ export default async function handler(req, res) {
   }
 }
 
-track-scan
+
+finish-early.js
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from './auth/[...nextauth]';
@@ -145,6 +146,220 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
+  const { teamName } = req.body;
+
+  try {
+    const sheets = await getSheetsClient();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Sheet1!A:H',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No teams found' 
+      });
+    }
+
+    const dataRows = rows.slice(1);
+
+    // Find the first row of this team
+    let teamFirstRowIndex = -1;
+    for (let i = 0; i < dataRows.length; i++) {
+      if (dataRows[i][0] === teamName) {
+        teamFirstRowIndex = i + 2;
+        break;
+      }
+    }
+
+    if (teamFirstRowIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Team not found'
+      });
+    }
+
+    // Update status to "Completed"
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: `Sheet1!H${teamFirstRowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [['Completed']],
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Timer ended successfully'
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to end timer',
+      details: error.message
+    });
+  }
+}
+
+
+submit-answers.js
+import { google } from 'googleapis';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from './auth/[...nextauth]';
+
+async function getSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const { teamName, answers } = req.body;
+  const userEmail = session.user.email.toLowerCase().trim();
+
+  try {
+    const sheets = await getSheetsClient();
+
+    // Get current data
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Sheet1!A:N', // Extended to column N for answers
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      return res.status(404).json({ success: false, message: 'Sheet data not found' });
+    }
+
+    const dataRows = rows.slice(1);
+
+    // Find team's first row
+    let teamFirstRowIndex = -1;
+    for (let i = 0; i < dataRows.length; i++) {
+      if (dataRows[i][0] === teamName) {
+        teamFirstRowIndex = i + 2;
+        break;
+      }
+    }
+
+    if (teamFirstRowIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Team not found' });
+    }
+
+    // Update status to "Completed" and save answers
+    // Columns: I=Q1, J=Q2, K=Q3, L=Q4, M=Q5, N=Q6, O=Q7
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: `Sheet1!H${teamFirstRowIndex}:O${teamFirstRowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[
+          'Completed',
+          answers.q1 || '',
+          answers.q2 || '',
+          answers.q3 || '',
+          answers.q4 || '',
+          answers.q5 || '',
+          answers.q6 || '',
+          answers.q7 || ''
+        ]],
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Answers submitted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to submit answers',
+      details: error.message
+    });
+  }
+}
+
+
+
+track-scan
+import { google } from 'googleapis';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from './auth/[...nextauth]';
+
+async function getSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+// Convert UTC Date to IST and format
+function formatToIST(utcDate) {
+  // Add IST offset (5 hours 30 minutes)
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(utcDate.getTime() + istOffset);
+  
+  const day = istDate.getUTCDate();
+  const getDaySuffix = (d) => {
+    if (d > 3 && d < 21) return 'th';
+    switch (d % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  };
+  
+  const hours = istDate.getUTCHours();
+  const minutes = istDate.getUTCMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  const minuteStr = minutes.toString().padStart(2, '0');
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[istDate.getUTCMonth()];
+  const year = istDate.getUTCFullYear();
+  
+  return `${hour12}:${minuteStr} ${ampm}, ${day}${getDaySuffix(day)} ${month} ${year}`;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
   const { scanTimestamp } = req.body;
   const userEmail = session.user.email.toLowerCase().trim();
 
@@ -153,7 +368,7 @@ export default async function handler(req, res) {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: 'Sheet1!A:H',
+      range: 'Sheet1!A:O', // Extended to column O for answers
     });
 
     const rows = response.data.values;
@@ -204,24 +419,84 @@ export default async function handler(req, res) {
     const existingStartTime = teamFirstRow[4]; // Column E
     const existingEndTime = teamFirstRow[5];   // Column F
     const existingFirstScanner = teamFirstRow[6]; // Column G
+    const teamStatus = teamFirstRow[7]; // Column H - Status
+
+    // ✅ Check if team has already submitted or time expired
+    if (teamStatus === 'Completed' || teamStatus === 'Time Expired') {
+      return res.status(403).json({
+        success: false,
+        locked: true,
+        message: `Access denied. Investigation window has been closed.`,
+        status: teamStatus
+      });
+    }
 
     // Check if timer already started
     if (existingStartTime && existingEndTime) {
+      // ✅ Parse formatted time back to Date for ISO calculation
+      // We'll store ISO in a separate column or calculate it here
+      // For now, calculate endTimeISO from current time
+      
+      // Parse the formatted date string back to Date
+      // This is a workaround - ideally store ISO separately
+      const now = new Date();
+      const endTimeParts = existingEndTime.match(/(\d+):(\d+)\s*(AM|PM),\s*(\d+)(st|nd|rd|th)\s*(\w+)\s*(\d+)/);
+      
+      if (endTimeParts) {
+        const [, hour, minute, ampm, day, , month, year] = endTimeParts;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthIndex = months.indexOf(month);
+        
+        let hour24 = parseInt(hour);
+        if (ampm === 'PM' && hour24 !== 12) hour24 += 12;
+        if (ampm === 'AM' && hour24 === 12) hour24 = 0;
+        
+        // Create date in IST, then convert to UTC for ISO
+        const endDateIST = new Date(year, monthIndex, day, hour24, parseInt(minute));
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const endDateUTC = new Date(endDateIST.getTime() - istOffset);
+        
+        return res.status(200).json({
+          success: true,
+          alreadyStarted: true,
+          teamName,
+          startTime: existingStartTime,
+          endTime: existingEndTime,
+          endTimeISO: endDateUTC.toISOString(), // ✅ For timer calculation
+          firstScanner: existingFirstScanner,
+          currentScanner: userEmail,
+          scanTimestamp,
+        });
+      }
+
+      // Fallback if parsing fails
       return res.status(200).json({
         success: true,
         alreadyStarted: true,
         teamName,
         startTime: existingStartTime,
         endTime: existingEndTime,
+        endTimeISO: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         firstScanner: existingFirstScanner,
         currentScanner: userEmail,
         scanTimestamp,
       });
     }
 
-    // First scan - start the 24-hour timer
-    const startTime = new Date(scanTimestamp);
+    // ✅ First scan - start the 24-hour timer (works on any date including Jan 12th)
+    const startTime = new Date(); // Current time in UTC
     const endTime = new Date(startTime.getTime() + 24 * 60 * 60 * 1000);
+
+    // Format timestamps to readable IST format
+    const startTimeFormatted = formatToIST(startTime);
+    const endTimeFormatted = formatToIST(endTime);
+
+    console.log('Timer started:', {
+      startTimeFormatted,
+      endTimeFormatted,
+      startTimeISO: startTime.toISOString(),
+      endTimeISO: endTime.toISOString()
+    });
 
     // Update the first row of the team with timer data
     await sheets.spreadsheets.values.update({
@@ -230,8 +505,8 @@ export default async function handler(req, res) {
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
-          startTime.toISOString(),
-          endTime.toISOString(),
+          startTimeFormatted,
+          endTimeFormatted,
           userEmail,
           'Active'
         ]],
@@ -242,11 +517,12 @@ export default async function handler(req, res) {
       success: true,
       alreadyStarted: false,
       teamName,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
+      startTime: startTimeFormatted,
+      endTime: endTimeFormatted,
+      endTimeISO: endTime.toISOString(), // ✅ Critical for timer calculation
       firstScanner: userEmail,
       currentScanner: userEmail,
-      scanTimestamp,
+      scanTimestamp: startTimeFormatted,
     });
 
   } catch (error) {
@@ -258,6 +534,52 @@ export default async function handler(req, res) {
     });
   }
 }
+
+_app.js
+import { SessionProvider } from 'next-auth/react';
+import Head from 'next/head';
+
+export default function App({ Component, pageProps: { session, ...pageProps } }) {
+  return (
+    <SessionProvider session={session}>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <title>Anvakrit Round One</title>
+      </Head>
+
+      <style jsx global>{`
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+        }
+
+        html, body {
+          overflow-x: hidden;
+          width: 100%;
+          font-size: 16px;
+        }
+
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        a, button, input, select {
+          min-height: 44px;
+        }
+
+        input, select, textarea {
+          font-size: 16px !important;
+        }
+      `}</style>
+      
+      <Component {...pageProps} />
+    </SessionProvider>
+  );
+}
+
 
 completed.js
 import { useEffect, useState } from 'react';
@@ -615,25 +937,36 @@ export default function DashboardPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [answers, setAnswers] = useState({
+    q1: '',
+    q2: '',
+    q3: '',
+    q4: '',
+    q5: '',
+    q6: '',
+    q7: ''
+  });
   
-  const { teamName, startTime, endTime, firstScanner, isFirst, currentUser } = router.query;
+  const { teamName, startTime, endTime, endTimeISO, firstScanner, isFirst, currentUser } = router.query;
 
   useEffect(() => {
     setMounted(true);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ✅ Timer uses ISO format to fix NaN issue
   useEffect(() => {
-    if (!endTime) return;
+    if (!endTimeISO) return;
 
     const updateTimer = () => {
       const now = new Date();
-      
-      let end;
-      if (typeof endTime === 'string' && !endTime.includes('T')) {
-        end = new Date(endTime);
-      } else {
-        end = new Date(endTime);
-      }
+      const end = new Date(endTimeISO);
       
       const difference = end - now;
 
@@ -654,29 +987,55 @@ export default function DashboardPage() {
     const interval = setInterval(updateTimer, 1000);
 
     return () => clearInterval(interval);
-  }, [endTime]);
+  }, [endTimeISO]);
 
+  // ✅ Handle "Terminate Investigation" - Submits answers + stops timer
   const handleFinishEarly = async () => {
+    // Validate all fields are filled
+    if (!answers.q1 || !answers.q2 || !answers.q3 || !answers.q4 || !answers.q5 || !answers.q6 || !answers.q7) {
+      alert('⚠️ Please answer all questions before terminating the investigation.');
+      setShowConfirmModal(false);
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const response = await fetch('/api/finish-early', {
+      // First, submit answers
+      const submitResponse = await fetch('/api/submit-answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamName, answers }),
+      });
+
+      const submitData = await submitResponse.json();
+
+      if (!submitData.success) {
+        alert('Failed to submit answers. Please try again.');
+        setSubmitting(false);
+        setShowConfirmModal(false);
+        return;
+      }
+
+      // Then, finish the timer
+      const finishResponse = await fetch('/api/finish-early', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamName }),
       });
 
-      const data = await response.json();
+      const finishData = await finishResponse.json();
 
-      if (data.success) {
+      if (finishData.success) {
         router.push('/completed');
       } else {
-        alert('Failed to finish timer. Please try again.');
+        alert('Answers submitted but failed to stop timer. Please contact support.');
         setSubmitting(false);
       }
     } catch (error) {
       console.error('Error:', error);
       alert('An error occurred. Please try again.');
       setSubmitting(false);
+      setShowConfirmModal(false);
     }
   };
 
@@ -697,19 +1056,11 @@ export default function DashboardPage() {
   }
 
   const formatDate = (dateString) => {
-    if (typeof dateString === 'string' && !dateString.includes('T')) {
+    if (!dateString) return 'N/A';
+    if (typeof dateString === 'string' && (dateString.includes('AM') || dateString.includes('PM'))) {
       return dateString;
     }
-    
-    return new Date(dateString).toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return dateString;
   };
 
   const getTimerColor = () => {
@@ -724,6 +1075,11 @@ export default function DashboardPage() {
     <>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        
+        * {
+          box-sizing: border-box;
+        }
+        
         @keyframes scanline {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(100vh); }
@@ -747,7 +1103,7 @@ export default function DashboardPage() {
       <div style={{
         minHeight: '100vh',
         background: '#030712',
-        padding: '40px 20px',
+        padding: isMobile ? '20px 12px' : '40px 20px',
         position: 'relative',
         overflow: 'hidden'
       }}>
@@ -779,7 +1135,7 @@ export default function DashboardPage() {
         }} />
 
         {/* Moving Particles */}
-        {mounted && [...Array(12)].map((_, i) => {
+        {mounted && [...Array(isMobile ? 6 : 12)].map((_, i) => {
           const startX = Math.random() * 100;
           const startY = Math.random() * 100;
           const endX = (Math.random() - 0.5) * 200;
@@ -818,7 +1174,7 @@ export default function DashboardPage() {
           {/* Header */}
           <div style={{
             textAlign: 'center',
-            marginBottom: '40px',
+            marginBottom: isMobile ? '24px' : '40px',
             animation: 'fade-in 0.6s ease-out'
           }}>
             <div style={{
@@ -827,22 +1183,23 @@ export default function DashboardPage() {
               backdropFilter: 'blur(20px)',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               borderRadius: '20px',
-              padding: '30px 50px',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)'
+              padding: isMobile ? '20px 16px' : '30px 50px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+              width: isMobile ? '100%' : 'auto'
             }}>
               <div style={{
-                fontSize: '13px',
+                fontSize: isMobile ? '0.7rem' : '13px',
                 color: '#60a5fa',
                 fontFamily: "'Rajdhani', sans-serif",
                 marginBottom: '12px',
-                letterSpacing: '2px',
+                letterSpacing: isMobile ? '1px' : '2px',
                 textTransform: 'uppercase',
                 fontWeight: '600'
               }}>
                 [OPERATION: ACTIVE]
               </div>
               <h1 style={{
-                fontSize: '48px',
+                fontSize: isMobile ? '1.75rem' : '48px',
                 fontWeight: '800',
                 background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
                 backgroundClip: 'text',
@@ -850,7 +1207,7 @@ export default function DashboardPage() {
                 WebkitTextFillColor: 'transparent',
                 marginBottom: '12px',
                 fontFamily: "'Orbitron', sans-serif",
-                letterSpacing: '2px',
+                letterSpacing: isMobile ? '1px' : '2px',
                 lineHeight: '1'
               }}>
                 ANVAKRIT 2.0
@@ -860,12 +1217,14 @@ export default function DashboardPage() {
                 background: 'rgba(59, 130, 246, 0.15)',
                 border: '1px solid rgba(59, 130, 246, 0.3)',
                 borderRadius: '10px',
-                padding: '8px 20px',
+                padding: isMobile ? '6px 12px' : '8px 20px',
                 color: '#60a5fa',
-                fontSize: '15px',
+                fontSize: isMobile ? '0.8rem' : '15px',
                 fontWeight: '600',
                 fontFamily: "'Rajdhani', sans-serif",
-                letterSpacing: '1px'
+                letterSpacing: '1px',
+                wordBreak: 'break-word',
+                maxWidth: '100%'
               }}>
                 TEAM: {teamName}
               </div>
@@ -879,14 +1238,14 @@ export default function DashboardPage() {
               border: '1px solid rgba(59, 130, 246, 0.3)',
               borderLeft: '4px solid #3b82f6',
               borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '30px',
+              padding: isMobile ? '16px' : '20px',
+              marginBottom: isMobile ? '20px' : '30px',
               textAlign: 'center',
               animation: 'fade-in 0.8s ease-out'
             }}>
               <p style={{
                 color: '#60a5fa',
-                fontSize: '16px',
+                fontSize: isMobile ? '13px' : '16px',
                 fontWeight: '600',
                 margin: 0,
                 fontFamily: "'Rajdhani', sans-serif",
@@ -903,10 +1262,10 @@ export default function DashboardPage() {
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '20px',
-              padding: '40px',
+              padding: isMobile ? '24px 16px' : '40px',
               border: `1px solid ${getTimerColor()}40`,
               boxShadow: `0 25px 50px rgba(0, 0, 0, 0.5)`,
-              marginBottom: '30px',
+              marginBottom: isMobile ? '20px' : '30px',
               animation: `fade-in 1s ease-out, pulse-glow 3s ease-in-out infinite`
             }}>
               <div style={{ textAlign: 'center' }}>
@@ -914,12 +1273,13 @@ export default function DashboardPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '12px',
-                  marginBottom: '30px'
+                  gap: isMobile ? '8px' : '12px',
+                  marginBottom: isMobile ? '20px' : '30px',
+                  flexWrap: 'wrap'
                 }}>
                   <div style={{
-                    width: '8px',
-                    height: '8px',
+                    width: isMobile ? '6px' : '8px',
+                    height: isMobile ? '6px' : '8px',
                     background: getTimerColor(),
                     borderRadius: '50%',
                     boxShadow: `0 0 15px ${getTimerColor()}`,
@@ -927,18 +1287,18 @@ export default function DashboardPage() {
                   }} />
                   <p style={{
                     color: getTimerColor(),
-                    fontSize: '16px',
+                    fontSize: isMobile ? '13px' : '16px',
                     fontWeight: '700',
                     margin: 0,
-                    letterSpacing: '2px',
+                    letterSpacing: isMobile ? '1px' : '2px',
                     fontFamily: "'Rajdhani', sans-serif",
                     textTransform: 'uppercase'
                   }}>
                     Investigation Window • Shared Deadline
                   </p>
                   <div style={{
-                    width: '8px',
-                    height: '8px',
+                    width: isMobile ? '6px' : '8px',
+                    height: isMobile ? '6px' : '8px',
                     background: getTimerColor(),
                     borderRadius: '50%',
                     boxShadow: `0 0 15px ${getTimerColor()}`,
@@ -950,10 +1310,11 @@ export default function DashboardPage() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '20px',
-                  marginBottom: '30px',
-                  maxWidth: '600px',
-                  margin: '0 auto 30px'
+                  gap: isMobile ? '8px' : '20px',
+                  marginBottom: isMobile ? '20px' : '30px',
+                  maxWidth: isMobile ? '100%' : '600px',
+                  margin: '0 auto',
+                  marginBottom: isMobile ? '20px' : '30px'
                 }}>
                   {[
                     { value: timeRemaining.hours, label: 'HOURS' },
@@ -964,26 +1325,26 @@ export default function DashboardPage() {
                       key={unit.label}
                       style={{
                         background: `rgba(59, 130, 246, 0.05)`,
-                        borderRadius: '16px',
-                        padding: '28px 20px',
+                        borderRadius: isMobile ? '12px' : '16px',
+                        padding: isMobile ? '12px 8px' : '28px 20px',
                         border: `1px solid rgba(59, 130, 246, 0.2)`,
                         boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
                       }}
                     >
                       <div style={{
-                        fontSize: '52px',
+                        fontSize: isMobile ? '1.75rem' : '52px',
                         fontWeight: '800',
                         color: getTimerColor(),
                         fontFamily: "'Orbitron', sans-serif",
                         lineHeight: '1',
-                        marginBottom: '12px'
+                        marginBottom: isMobile ? '6px' : '12px'
                       }}>
                         {String(unit.value).padStart(2, '0')}
                       </div>
                       <div style={{
                         color: '#94a3b8',
-                        fontSize: '12px',
-                        letterSpacing: '1.5px',
+                        fontSize: isMobile ? '0.6rem' : '12px',
+                        letterSpacing: isMobile ? '0.5px' : '1.5px',
                         fontWeight: '600',
                         fontFamily: "'Rajdhani', sans-serif"
                       }}>
@@ -997,16 +1358,18 @@ export default function DashboardPage() {
                   background: 'rgba(59, 130, 246, 0.1)',
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   borderRadius: '12px',
-                  padding: '16px',
-                  display: 'inline-block'
+                  padding: isMobile ? '12px' : '16px',
+                  display: 'inline-block',
+                  maxWidth: '100%'
                 }}>
                   <p style={{ 
                     color: '#60a5fa', 
-                    fontSize: '14px', 
+                    fontSize: isMobile ? '12px' : '14px', 
                     fontWeight: '600',
                     margin: 0,
                     fontFamily: "'Rajdhani', sans-serif",
-                    letterSpacing: '0.5px'
+                    letterSpacing: '0.5px',
+                    wordBreak: 'break-word'
                   }}>
                     📅 DEADLINE: {formatDate(endTime)}
                   </p>
@@ -1018,31 +1381,31 @@ export default function DashboardPage() {
           {/* Two Column Layout */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '24px',
-            marginBottom: '30px'
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: isMobile ? '16px' : '24px',
+            marginBottom: isMobile ? '20px' : '30px'
           }}>
             {/* Team Status Panel */}
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '16px',
-              padding: '30px',
+              padding: isMobile ? '20px' : '30px',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
               animation: 'fade-in 1.2s ease-out'
             }}>
               <h2 style={{
                 color: '#60a5fa',
-                fontSize: '18px',
+                fontSize: isMobile ? '16px' : '18px',
                 fontWeight: '700',
-                marginBottom: '24px',
+                marginBottom: isMobile ? '16px' : '24px',
                 fontFamily: "'Orbitron', sans-serif",
                 letterSpacing: '1px'
               }}>
                 📊 ACCESS REGISTRY
               </h2>
-              <div style={{ display: 'grid', gap: '14px' }}>
+              <div style={{ display: 'grid', gap: isMobile ? '10px' : '14px' }}>
                 {[
                   { label: 'Primary Investigator', value: firstScanner },
                   { label: 'Session Started', value: typeof startTime === 'string' ? startTime : formatDate(startTime) },
@@ -1054,21 +1417,13 @@ export default function DashboardPage() {
                       background: 'rgba(59, 130, 246, 0.08)',
                       borderLeft: `3px solid #3b82f6`,
                       borderRadius: '8px',
-                      padding: '14px',
+                      padding: isMobile ? '12px' : '14px',
                       transition: 'all 0.2s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
-                      e.currentTarget.style.transform = 'translateX(4px)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.08)';
-                      e.currentTarget.style.transform = 'translateX(0)';
                     }}
                   >
                     <div style={{
                       color: '#94a3b8',
-                      fontSize: '11px',
+                      fontSize: isMobile ? '10px' : '11px',
                       marginBottom: '6px',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
@@ -1079,7 +1434,7 @@ export default function DashboardPage() {
                     <div style={{
                       color: '#60a5fa',
                       fontWeight: '600',
-                      fontSize: '13px',
+                      fontSize: isMobile ? '12px' : '13px',
                       fontFamily: "'Inter', sans-serif",
                       wordBreak: 'break-all'
                     }}>
@@ -1090,57 +1445,36 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Mission Brief Panel */}
+            {/* Mission Objective */}
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '16px',
-              padding: '30px',
+              padding: isMobile ? '20px' : '30px',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
               animation: 'fade-in 1.4s ease-out'
             }}>
               <h2 style={{
                 color: '#60a5fa',
-                fontSize: '18px',
+                fontSize: isMobile ? '16px' : '18px',
                 fontWeight: '700',
-                marginBottom: '20px',
+                marginBottom: isMobile ? '16px' : '20px',
                 fontFamily: "'Orbitron', sans-serif",
                 letterSpacing: '1px'
               }}>
-                🎯 MISSION OBJECTIVES
+                🎯 PRIMARY OBJECTIVE
               </h2>
-              <ul style={{
+              <div style={{
                 color: '#cbd5e1',
-                fontSize: '13px',
-                lineHeight: '2',
-                paddingLeft: '20px',
-                margin: 0,
-                listStyleType: 'none',
+                fontSize: isMobile ? '13px' : '14px',
+                lineHeight: '1.9',
                 fontFamily: "'Inter', sans-serif"
               }}>
-                {[
-                  'Analyze complete case file documentation',
-                  'Reconstruct event timeline & sequence',
-                  'Evaluate suspect motives & opportunities',
-                  'Cross-reference forensic evidence',
-                  'Identify perpetrator with justification',
-                  'Submit findings via secured form'
-                ].map((item, idx) => (
-                  <li key={idx} style={{ position: 'relative', paddingLeft: '22px' }}>
-                    <span style={{
-                      position: 'absolute',
-                      left: 0,
-                      color: '#3b82f6',
-                      fontWeight: '700',
-                      fontFamily: "'Rajdhani', sans-serif"
-                    }}>
-                      [{idx + 1}]
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
+                <p style={{ margin: 0 }}>
+                  Answer the questions asked below based on your analysis of the provided case file materials.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1149,17 +1483,17 @@ export default function DashboardPage() {
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
-            padding: '35px',
+            padding: isMobile ? '24px 20px' : '35px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
-            marginBottom: '30px',
-            animation: 'fade-in 1.6s ease-out'
+            marginBottom: isMobile ? '20px' : '30px',
+            animation: 'fade-in 1.5s ease-out'
           }}>
             <h2 style={{
               color: '#60a5fa',
-              fontSize: '24px',
+              fontSize: isMobile ? '18px' : '24px',
               fontWeight: '700',
-              marginBottom: '24px',
+              marginBottom: isMobile ? '18px' : '24px',
               fontFamily: "'Orbitron', sans-serif",
               textAlign: 'center',
               letterSpacing: '1px'
@@ -1169,9 +1503,9 @@ export default function DashboardPage() {
             
             <div style={{
               color: '#cbd5e1',
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               lineHeight: '1.9',
-              marginBottom: '28px',
+              marginBottom: isMobile ? '20px' : '28px',
               fontFamily: "'Inter', sans-serif"
             }}>
               <p style={{ marginBottom: '16px' }}>
@@ -1186,12 +1520,12 @@ export default function DashboardPage() {
               background: 'rgba(59, 130, 246, 0.08)',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               borderRadius: '12px',
-              padding: '24px',
-              marginBottom: '24px'
+              padding: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? '18px' : '24px'
             }}>
               <h3 style={{
                 color: '#60a5fa',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '700',
                 marginBottom: '14px',
                 fontFamily: "'Rajdhani', sans-serif",
@@ -1202,12 +1536,12 @@ export default function DashboardPage() {
               </h3>
               <p style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
-                Upon case closure, locate the <strong style={{ color: '#60a5fa' }}>secondary QR code</strong> at the end of your case file. This will authenticate access to the <strong style={{ color: '#3b82f6' }}>secured submission portal</strong> (Google Form). Only entries submitted within the active investigation window will be processed.
+                Answer the questions below and click <strong style={{ color: '#f59e0b' }}>"Terminate Investigation"</strong> to submit your responses.
               </p>
             </div>
 
@@ -1216,11 +1550,11 @@ export default function DashboardPage() {
               border: '1px solid rgba(59, 130, 246, 0.2)',
               borderLeft: '4px solid #3b82f6',
               borderRadius: '12px',
-              padding: '24px'
+              padding: isMobile ? '18px' : '24px'
             }}>
               <h3 style={{
                 color: '#60a5fa',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '700',
                 marginBottom: '14px',
                 fontFamily: "'Rajdhani', sans-serif",
@@ -1231,7 +1565,7 @@ export default function DashboardPage() {
               </h3>
               <ul style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '2',
                 paddingLeft: '20px',
                 margin: 0,
@@ -1246,23 +1580,386 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Early Completion Panel */}
+          {/* ✅ INVESTIGATION QUESTIONS SECTION */}
           <div style={{
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
-            padding: '40px',
-            marginBottom: '30px',
-            textAlign: 'center',
+            padding: isMobile ? '20px 16px' : '35px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+            marginBottom: isMobile ? '20px' : '30px',
+            animation: 'fade-in 1.6s ease-out'
+          }}>
+            <h2 style={{
+              color: '#60a5fa',
+              fontSize: isMobile ? '18px' : '24px',
+              fontWeight: '700',
+              marginBottom: isMobile ? '20px' : '24px',
+              fontFamily: "'Orbitron', sans-serif",
+              textAlign: 'center',
+              letterSpacing: '1px'
+            }}>
+              📋 INVESTIGATION QUESTIONS
+            </h2>
+
+            <div style={{ display: 'grid', gap: isMobile ? '16px' : '24px' }}>
+              {/* Question 1 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  1) Mode of Victim's Detention
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Vivek was brought to the police station under which circumstances?
+                </p>
+                <select
+                  value={answers.q1}
+                  onChange={(e) => setAnswers({...answers, q1: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Arrest under warrant</option>
+                  <option value="B">B. Voluntary appearance</option>
+                  <option value="C">C. Preventive custody</option>
+                  <option value="D">D. Summons for questioning</option>
+                </select>
+              </div>
+
+              {/* Question 2 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  2) Official Case Description
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  How is the case officially described in police records?
+                </p>
+                <select
+                  value={answers.q2}
+                  onChange={(e) => setAnswers({...answers, q2: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Accidental death</option>
+                  <option value="B">B. Natural death in custody</option>
+                  <option value="C">C. Suicide under inquiry</option>
+                  <option value="D">D. Suspicious / custodial death under inquiry</option>
+                </select>
+              </div>
+
+              {/* Question 3 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  3) Chemical Examination Unit
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which unit received the stomach contents for chemical examination?
+                </p>
+                <select
+                  value={answers.q3}
+                  onChange={(e) => setAnswers({...answers, q3: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Digital Forensics Lab</option>
+                  <option value="B">B. Criminal Psychology Division</option>
+                  <option value="C">C. Toxicology Unit</option>
+                  <option value="D">D. Cyber Crime Cell</option>
+                </select>
+              </div>
+
+              {/* Question 4 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  4) Ethylene Glycol Source
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which of the following items listed in the bar bill would likely be a direct source of ethylene glycol?
+                </p>
+                <select
+                  value={answers.q4}
+                  onChange={(e) => setAnswers({...answers, q4: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Absinthe</option>
+                  <option value="B">B. Single Malt Scotch</option>
+                  <option value="C">C. Old Fashioned cocktail</option>
+                  <option value="D">D. Craft Beer</option>
+                </select>
+              </div>
+
+              {/* Question 5 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  5) Psychological Assessment Theme
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which behavioural theme was repeatedly observed in Arun Kothari's psychological assessment?
+                </p>
+                <select
+                  value={answers.q5}
+                  onChange={(e) => setAnswers({...answers, q5: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Empathy and remorse</option>
+                  <option value="B">B. Emotional detachment</option>
+                  <option value="C">C. Suppressed aggression and need for dominance</option>
+                  <option value="D">D. Cognitive impairment</option>
+                </select>
+              </div>
+
+              {/* Question 6 - Long Answer */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  6) Modus Operandi Analysis
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Considering the FSL toxicology report indicating ethylene glycol presence along with traces of ethanol, what is your expert opinion on the modus operandi, timeline, and manner of ingestion in relation to the documented events?
+                </p>
+                <textarea
+                  value={answers.q6}
+                  onChange={(e) => setAnswers({...answers, q6: e.target.value})}
+                  rows={isMobile ? 5 : 6}
+                  placeholder="Enter your detailed analysis..."
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif",
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {/* Question 7 - Long Answer */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  7) Explanatory Hypotheses
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Considering the available documentation, what plausible explanatory hypotheses emerge regarding the sequence of events and possible suspects along with evidence-based justification?
+                </p>
+                <textarea
+                  value={answers.q7}
+                  onChange={(e) => setAnswers({...answers, q7: e.target.value})}
+                  rows={isMobile ? 5 : 6}
+                  placeholder="Enter your detailed hypothesis and justification..."
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif",
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ TERMINATE INVESTIGATION SECTION */}
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '16px',
+            padding: isMobile ? '28px 20px' : '40px',
+            marginBottom: isMobile ? '20px' : '30px',
+            textAlign: 'center',
+            border: '1px solid rgba(245, 158, 11, 0.2)',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
             animation: 'fade-in 1.8s ease-out'
           }}>
             <h3 style={{
-              color: '#60a5fa',
-              fontSize: '22px',
+              color: '#f59e0b',
+              fontSize: isMobile ? '18px' : '22px',
               fontWeight: '700',
-              marginBottom: '18px',
+              marginBottom: isMobile ? '14px' : '18px',
               fontFamily: "'Orbitron', sans-serif",
               letterSpacing: '1px'
             }}>
@@ -1270,14 +1967,15 @@ export default function DashboardPage() {
             </h3>
             <p style={{
               color: '#cbd5e1',
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               lineHeight: '1.8',
-              marginBottom: '24px',
+              marginBottom: isMobile ? '20px' : '24px',
               maxWidth: '700px',
-              margin: '0 auto 24px',
+              margin: '0 auto',
+              marginBottom: isMobile ? '20px' : '24px',
               fontFamily: "'Inter', sans-serif"
             }}>
-              If your team has successfully submitted the final report via the <strong style={{ color: '#60a5fa' }}>Google Form</strong> (accessed through the QR code in your case file), you may terminate the investigation window early.
+              If you have answered all questions above, you may terminate the investigation window and submit your final answers.
             </p>
             
             <div style={{
@@ -1285,19 +1983,20 @@ export default function DashboardPage() {
               border: '1px solid rgba(239, 68, 68, 0.3)',
               borderLeft: '4px solid #ef4444',
               borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '28px',
+              padding: isMobile ? '16px' : '20px',
+              marginBottom: isMobile ? '20px' : '28px',
               maxWidth: '650px',
-              margin: '0 auto 28px'
+              margin: '0 auto',
+              marginBottom: isMobile ? '20px' : '28px'
             }}>
               <p style={{
                 color: '#fca5a5',
-                fontSize: '13px',
+                fontSize: isMobile ? '12px' : '13px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
-                <strong style={{ color: '#ef4444' }}>⚠️ WARNING:</strong> This action will <strong>immediately terminate</strong> the 24-hour investigation window for your <strong>entire team</strong>. Proceed only after confirmed form submission. <strong>This action is irreversible.</strong>
+                <strong style={{ color: '#ef4444' }}>⚠️ WARNING:</strong> This action will <strong>immediately terminate</strong> the 24-hour investigation window for your <strong>entire team</strong>. Proceed only after all questions are answered. <strong>This action is irreversible.</strong>
               </p>
             </div>
 
@@ -1307,10 +2006,10 @@ export default function DashboardPage() {
               style={{
                 background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                 color: '#ffffff',
-                padding: '16px 40px',
+                padding: isMobile ? '14px 24px' : '16px 40px',
                 borderRadius: '12px',
                 border: 'none',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '600',
                 cursor: submitting ? 'not-allowed' : 'pointer',
                 opacity: submitting ? 0.5 : 1,
@@ -1359,7 +2058,7 @@ export default function DashboardPage() {
                 background: 'rgba(15, 23, 42, 0.95)',
                 backdropFilter: 'blur(20px)',
                 borderRadius: '20px',
-                padding: '50px 40px',
+                padding: isMobile ? '40px 24px' : '50px 40px',
                 maxWidth: '550px',
                 width: '100%',
                 border: '1px solid rgba(59, 130, 246, 0.3)',
@@ -1367,8 +2066,8 @@ export default function DashboardPage() {
                 animation: 'fade-in 0.3s ease-out'
               }}>
                 <div style={{
-                  width: '80px',
-                  height: '80px',
+                  width: isMobile ? '60px' : '80px',
+                  height: isMobile ? '60px' : '80px',
                   margin: '0 auto 30px',
                   background: 'rgba(59, 130, 246, 0.15)',
                   borderRadius: '50%',
@@ -1376,14 +2075,14 @@ export default function DashboardPage() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <svg style={{ width: '40px', height: '40px', color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg style={{ width: isMobile ? '30px' : '40px', height: isMobile ? '30px' : '40px', color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
 
                 <h2 style={{
                   color: 'white',
-                  fontSize: '26px',
+                  fontSize: isMobile ? '20px' : '26px',
                   fontWeight: '700',
                   marginBottom: '20px',
                   textAlign: 'center',
@@ -1397,12 +2096,12 @@ export default function DashboardPage() {
                   background: 'rgba(59, 130, 246, 0.1)',
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   borderRadius: '12px',
-                  padding: '24px',
-                  marginBottom: '30px'
+                  padding: isMobile ? '20px' : '24px',
+                  marginBottom: isMobile ? '24px' : '30px'
                 }}>
                   <p style={{
                     color: '#cbd5e1',
-                    fontSize: '15px',
+                    fontSize: isMobile ? '14px' : '15px',
                     lineHeight: '1.8',
                     marginBottom: '16px',
                     textAlign: 'center',
@@ -1412,24 +2111,25 @@ export default function DashboardPage() {
                   </p>
                   <p style={{
                     color: '#60a5fa',
-                    fontSize: '20px',
+                    fontSize: isMobile ? '16px' : '20px',
                     fontWeight: '700',
                     textAlign: 'center',
                     margin: '16px 0',
-                    fontFamily: "'Orbitron', sans-serif"
+                    fontFamily: "'Orbitron', sans-serif",
+                    wordBreak: 'break-word'
                   }}>
                     TEAM {teamName}
                   </p>
                   <p style={{
                     color: '#94a3b8',
-                    fontSize: '13px',
+                    fontSize: isMobile ? '12px' : '13px',
                     lineHeight: '1.8',
                     textAlign: 'center',
                     margin: 0,
                     fontFamily: "'Inter', sans-serif"
                   }}>
                     This will immediately lock out all team members.<br/>
-                    Only proceed if submission is confirmed.<br/>
+                    Only proceed if all answers are complete.<br/>
                     <strong>THIS ACTION CANNOT BE UNDONE.</strong>
                   </p>
                 </div>
@@ -1437,7 +2137,8 @@ export default function DashboardPage() {
                 <div style={{
                   display: 'flex',
                   gap: '14px',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  flexDirection: isMobile ? 'column' : 'row'
                 }}>
                   <button
                     onClick={() => setShowConfirmModal(false)}
@@ -1445,16 +2146,17 @@ export default function DashboardPage() {
                     style={{
                       background: 'rgba(255, 255, 255, 0.08)',
                       color: 'white',
-                      padding: '14px 32px',
+                      padding: isMobile ? '12px 24px' : '14px 32px',
                       borderRadius: '10px',
                       border: '1px solid rgba(255, 255, 255, 0.2)',
-                      fontSize: '15px',
+                      fontSize: isMobile ? '14px' : '15px',
                       fontWeight: '600',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       transition: 'all 0.2s',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
-                      textTransform: 'uppercase'
+                      textTransform: 'uppercase',
+                      width: isMobile ? '100%' : 'auto'
                     }}
                     onMouseOver={(e) => !submitting && (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)')}
                     onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
@@ -1467,10 +2169,10 @@ export default function DashboardPage() {
                     style={{
                       background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                       color: 'white',
-                      padding: '14px 32px',
+                      padding: isMobile ? '12px 24px' : '14px 32px',
                       borderRadius: '10px',
                       border: 'none',
-                      fontSize: '15px',
+                      fontSize: isMobile ? '14px' : '15px',
                       fontWeight: '600',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       opacity: submitting ? 0.6 : 1,
@@ -1478,7 +2180,8 @@ export default function DashboardPage() {
                       boxShadow: '0 10px 30px rgba(34, 197, 94, 0.3)',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
-                      textTransform: 'uppercase'
+                      textTransform: 'uppercase',
+                      width: isMobile ? '100%' : 'auto'
                     }}
                     onMouseOver={(e) => !submitting && (e.currentTarget.style.transform = 'scale(1.05)')}
                     onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -1493,7 +2196,7 @@ export default function DashboardPage() {
           {/* Footer */}
           <div style={{
             textAlign: 'center',
-            padding: '30px',
+            padding: isMobile ? '20px' : '30px',
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
@@ -1503,7 +2206,7 @@ export default function DashboardPage() {
           }}>
             <p style={{
               color: '#60a5fa',
-              fontSize: '16px',
+              fontSize: isMobile ? '14px' : '16px',
               fontStyle: 'italic',
               lineHeight: '1.8',
               marginBottom: '16px',
@@ -1519,16 +2222,16 @@ export default function DashboardPage() {
             }} />
             <p style={{
               color: '#64748b',
-              fontSize: '12px',
+              fontSize: isMobile ? '11px' : '12px',
               marginBottom: '6px',
               fontFamily: "'Rajdhani', sans-serif",
               letterSpacing: '0.5px'
             }}>
-              TECHNICAL SUPPORT: anvakrit@nfsu.ac.in
+              TECHNICAL SUPPORT: csi_dc@nfsu.ac.in
             </p>
             <p style={{
               color: '#475569',
-              fontSize: '11px',
+              fontSize: isMobile ? '10px' : '11px',
               fontFamily: "'Inter', sans-serif"
             }}>
               NATIONAL FORENSIC SCIENCES UNIVERSITY
@@ -1545,12 +2248,36 @@ index.js
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+
 export default function HomePage() {
   const [mounted, setMounted] = useState(false);
+  const [fontSize, setFontSize] = useState('68px');
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const updateSizes = () => {
+      const width = window.innerWidth;
+      setIsMobile(width <= 768);
+      
+      if (width <= 480) {
+        setFontSize('2.5rem'); // 40px for small phones
+      } else if (width <= 768) {
+        setFontSize('3.5rem'); // 56px for tablets
+      } else {
+        setFontSize('68px'); // Desktop
+      }
+    };
+    
+    updateSizes(); // Set initial size
+    window.addEventListener('resize', updateSizes);
+    
+    return () => window.removeEventListener('resize', updateSizes);
+  }, []);
+
 
   return (
     <>
@@ -1580,6 +2307,7 @@ export default function HomePage() {
         }
       `}</style>
 
+
       <div style={{
         position: 'relative',
         minHeight: '100vh',
@@ -1587,7 +2315,7 @@ export default function HomePage() {
         alignItems: 'center',
         justifyContent: 'center',
         background: '#030712',
-        padding: '40px 20px',
+        padding: isMobile ? '20px 16px' : '40px 20px',
         overflow: 'hidden'
       }}>
         
@@ -1606,6 +2334,7 @@ export default function HomePage() {
           zIndex: 0
         }} />
 
+
         {/* Animated Scanning Line */}
         <div style={{
           position: 'absolute',
@@ -1618,6 +2347,7 @@ export default function HomePage() {
           animation: 'scanline 8s linear infinite',
           zIndex: 1
         }} />
+
 
         {/* Moving Particles */}
         {mounted && [...Array(20)].map((_, i) => {
@@ -1651,6 +2381,7 @@ export default function HomePage() {
           );
         })}
 
+
         {/* Content Container */}
         <div style={{
           position: 'relative',
@@ -1664,7 +2395,7 @@ export default function HomePage() {
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderRadius: '20px',
-            padding: '60px 45px',
+            padding: isMobile ? '40px 24px' : '60px 45px',
             border: '1px solid rgba(59, 130, 246, 0.15)',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
           }}>
@@ -1672,7 +2403,7 @@ export default function HomePage() {
             {/* Top Badge */}
             <div style={{
               textAlign: 'center',
-              marginBottom: '30px'
+              marginBottom: isMobile ? '24px' : '30px'
             }}>
               <div style={{
                 display: 'inline-flex',
@@ -1681,11 +2412,11 @@ export default function HomePage() {
                 background: 'rgba(59, 130, 246, 0.1)',
                 border: '1px solid rgba(59, 130, 246, 0.2)',
                 borderRadius: '50px',
-                padding: '6px 18px',
-                fontSize: '12px',
+                padding: isMobile ? '6px 14px' : '6px 18px',
+                fontSize: isMobile ? '11px' : '12px',
                 fontWeight: '600',
                 color: '#60a5fa',
-                letterSpacing: '1px',
+                letterSpacing: isMobile ? '0.5px' : '1px',
                 fontFamily: "'Rajdhani', sans-serif",
                 textTransform: 'uppercase'
               }}>
@@ -1701,9 +2432,10 @@ export default function HomePage() {
               </div>
             </div>
 
+
             {/* Main Title */}
             <h1 style={{
-              fontSize: '68px',
+              fontSize: fontSize,
               fontWeight: '900',
               background: 'linear-gradient(180deg, #ffffff 0%, #3b82f6 100%)',
               backgroundClip: 'text',
@@ -1712,12 +2444,13 @@ export default function HomePage() {
               marginBottom: '16px',
               textAlign: 'center',
               fontFamily: "'Orbitron', monospace",
-              letterSpacing: '3px',
+              letterSpacing: fontSize === '68px' ? '3px' : '2px',
               lineHeight: '1',
               textShadow: '0 0 80px rgba(59, 130, 246, 0.3)'
             }}>
               ANVAKRIT 2.0
             </h1>
+
 
             {/* Tagline */}
             <div style={{
@@ -1726,10 +2459,10 @@ export default function HomePage() {
             }}>
               <p style={{
                 color: '#60a5fa',
-                fontSize: '16px',
+                fontSize: isMobile ? '14px' : '16px',
                 margin: 0,
                 fontWeight: '600',
-                letterSpacing: '4px',
+                letterSpacing: isMobile ? '2px' : '4px',
                 fontFamily: "'Rajdhani', sans-serif",
                 textTransform: 'uppercase'
               }}>
@@ -1737,11 +2470,12 @@ export default function HomePage() {
               </p>
             </div>
 
+
             {/* Subtitle */}
             <p style={{
               color: '#94a3b8',
-              fontSize: '15px',
-              marginBottom: '40px',
+              fontSize: isMobile ? '13px' : '15px',
+              marginBottom: isMobile ? '32px' : '40px',
               textAlign: 'center',
               fontWeight: '500',
               fontFamily: "'Rajdhani', sans-serif",
@@ -1755,21 +2489,22 @@ export default function HomePage() {
               background: 'rgba(59, 130, 246, 0.04)',
               border: '1px solid rgba(59, 130, 246, 0.15)',
               borderRadius: '12px',
-              padding: '22px',
-              marginBottom: '32px'
+              padding: isMobile ? '18px' : '22px',
+              marginBottom: isMobile ? '28px' : '32px'
             }}>
               <p style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
                 <span style={{ color: '#60a5fa', fontWeight: '600' }}>Authentication Required</span>
                 <br />
-                Access the secure portal to receive your classified case file and begin the 24-hour investigation window.
+                Access the secure portal with your registered email ID.
               </p>
             </div>
+
 
             {/* CTA Button */}
             <Link href="/scan" style={{
@@ -1779,11 +2514,11 @@ export default function HomePage() {
               gap: '10px',
               background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
               color: '#ffffff',
-              padding: '16px 32px',
+              padding: isMobile ? '14px 24px' : '16px 32px',
               borderRadius: '10px',
               fontWeight: '600',
               textDecoration: 'none',
-              fontSize: '15px',
+              fontSize: isMobile ? '14px' : '15px',
               textAlign: 'center',
               boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
               transition: 'all 0.3s ease',
@@ -1801,26 +2536,28 @@ export default function HomePage() {
               e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.3)';
             }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width={isMobile ? "16" : "18"} height={isMobile ? "16" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
               <span>Access Portal</span>
             </Link>
 
+
             {/* Footer */}
             <div style={{
-              marginTop: '32px',
-              paddingTop: '20px',
+              marginTop: isMobile ? '28px' : '32px',
+              paddingTop: isMobile ? '18px' : '20px',
               borderTop: '1px solid rgba(59, 130, 246, 0.08)',
               textAlign: 'center'
             }}>
               <p style={{
                 color: '#475569',
-                fontSize: '12px',
+                fontSize: isMobile ? '11px' : '12px',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif",
-                letterSpacing: '0.3px'
+                letterSpacing: '0.3px',
+                lineHeight: '1.6'
               }}>
                 National Forensic Sciences University
               </p>
@@ -1832,11 +2569,11 @@ export default function HomePage() {
   );
 }
 
-
 scan.js
 import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/router';
+
 
 export default function ScanPage() {
   const { data: session, status } = useSession();
@@ -1844,6 +2581,17 @@ export default function ScanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -1927,7 +2675,8 @@ export default function ScanPage() {
           justifyContent: 'center',
           background: '#030712',
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          padding: isMobile ? '20px' : '0'
         }}>
           {/* Grid Background */}
           <div style={{
@@ -1946,9 +2695,9 @@ export default function ScanPage() {
           {/* Radar Animation */}
           <div style={{
             position: 'relative',
-            width: '180px',
-            height: '180px',
-            marginBottom: '40px'
+            width: isMobile ? '150px' : '180px',
+            height: isMobile ? '150px' : '180px',
+            marginBottom: isMobile ? '32px' : '40px'
           }}>
             {/* Pulse Rings */}
             {[...Array(3)].map((_, i) => (
@@ -1973,8 +2722,8 @@ export default function ScanPage() {
               position: 'absolute',
               top: '50%',
               left: '50%',
-              width: '130px',
-              height: '130px',
+              width: isMobile ? '110px' : '130px',
+              height: isMobile ? '110px' : '130px',
               background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
               borderRadius: '50%',
               transform: 'translate(-50%, -50%)',
@@ -1986,7 +2735,7 @@ export default function ScanPage() {
                 top: '50%',
                 left: '50%',
                 width: '2px',
-                height: '65px',
+                height: isMobile ? '55px' : '65px',
                 background: 'linear-gradient(to bottom, #3b82f6, transparent)',
                 transformOrigin: 'top center',
                 transform: 'translate(-50%, 0)',
@@ -1999,8 +2748,8 @@ export default function ScanPage() {
               position: 'absolute',
               top: '50%',
               left: '50%',
-              width: '16px',
-              height: '16px',
+              width: isMobile ? '14px' : '16px',
+              height: isMobile ? '14px' : '16px',
               background: '#3b82f6',
               borderRadius: '50%',
               transform: 'translate(-50%, -50%)',
@@ -2012,21 +2761,22 @@ export default function ScanPage() {
           <div style={{
             textAlign: 'center',
             color: 'white',
-            maxWidth: '400px'
+            maxWidth: '400px',
+            padding: isMobile ? '0 20px' : '0'
           }}>
             <p style={{
-              fontSize: '24px',
+              fontSize: isMobile ? '20px' : '24px',
               fontWeight: '700',
               color: '#60a5fa',
               marginBottom: '12px',
               fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: '2px',
+              letterSpacing: isMobile ? '1.5px' : '2px',
               textShadow: '0 0 20px rgba(96, 165, 250, 0.5)'
             }}>
               AUTHENTICATING
             </p>
             <p style={{
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               color: '#94a3b8',
               marginBottom: '30px',
               fontFamily: "'Rajdhani', sans-serif",
@@ -2057,7 +2807,7 @@ export default function ScanPage() {
               }} />
             </div>
             <p style={{
-              fontSize: '12px',
+              fontSize: isMobile ? '11px' : '12px',
               color: '#60a5fa',
               fontFamily: "'Rajdhani', sans-serif",
               fontWeight: '600',
@@ -2099,7 +2849,7 @@ export default function ScanPage() {
         alignItems: 'center',
         justifyContent: 'center',
         background: '#030712',
-        padding: '20px',
+        padding: isMobile ? '20px 16px' : '20px',
         position: 'relative',
         overflow: 'hidden'
       }}>
@@ -2141,16 +2891,16 @@ export default function ScanPage() {
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '20px',
-            padding: '50px 40px',
+            padding: isMobile ? '40px 24px' : '50px 40px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
           }}>
             <div style={{ textAlign: 'center' }}>
               {/* Security Icon */}
               <div style={{
-                width: '90px',
-                height: '90px',
-                margin: '0 auto 30px',
+                width: isMobile ? '70px' : '90px',
+                height: isMobile ? '70px' : '90px',
+                margin: isMobile ? '0 auto 24px' : '0 auto 30px',
                 background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
                 borderRadius: '50%',
                 display: 'flex',
@@ -2164,8 +2914,8 @@ export default function ScanPage() {
                     key={i}
                     style={{
                       position: 'absolute',
-                      width: '55px',
-                      height: '55px',
+                      width: isMobile ? '45px' : '55px',
+                      height: isMobile ? '45px' : '55px',
                       border: '2px solid #3b82f6',
                       borderRadius: '50%',
                       animation: `fingerprint ${2 + i * 0.5}s ease-in-out infinite`,
@@ -2174,8 +2924,8 @@ export default function ScanPage() {
                   />
                 ))}
                 <svg style={{ 
-                  width: '45px', 
-                  height: '45px', 
+                  width: isMobile ? '35px' : '45px', 
+                  height: isMobile ? '35px' : '45px', 
                   color: '#3b82f6', 
                   filter: 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.6))', 
                   zIndex: 1 
@@ -2188,13 +2938,13 @@ export default function ScanPage() {
               {/* Header */}
               <div style={{
                 background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.08), transparent)',
-                padding: '12px',
-                marginBottom: '24px',
+                padding: isMobile ? '10px' : '12px',
+                marginBottom: isMobile ? '20px' : '24px',
                 borderRadius: '12px',
                 border: '1px solid rgba(59, 130, 246, 0.1)'
               }}>
                 <h1 style={{
-                  fontSize: '32px',
+                  fontSize: isMobile ? '1.5rem' : '32px',
                   fontWeight: '700',
                   background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
                   backgroundClip: 'text',
@@ -2202,14 +2952,14 @@ export default function ScanPage() {
                   WebkitTextFillColor: 'transparent',
                   marginBottom: '8px',
                   fontFamily: "'Orbitron', sans-serif",
-                  letterSpacing: '1px'
+                  letterSpacing: isMobile ? '0.5px' : '1px'
                 }}>
                   AUTHENTICATION
                 </h1>
                 <p style={{
                   color: '#94a3b8',
                   marginBottom: '0',
-                  fontSize: '14px',
+                  fontSize: isMobile ? '12px' : '14px',
                   fontFamily: "'Rajdhani', sans-serif",
                   letterSpacing: '0.5px'
                 }}>
@@ -2223,12 +2973,12 @@ export default function ScanPage() {
                   border: '1px solid rgba(239, 68, 68, 0.3)',
                   borderLeft: '4px solid #ef4444',
                   borderRadius: '12px',
-                  padding: '18px',
-                  marginBottom: '24px'
+                  padding: isMobile ? '16px' : '18px',
+                  marginBottom: isMobile ? '20px' : '24px'
                 }}>
                   <p style={{ 
                     color: '#fca5a5', 
-                    fontSize: '14px', 
+                    fontSize: isMobile ? '13px' : '14px', 
                     margin: 0, 
                     fontWeight: '600',
                     fontFamily: "'Inter', sans-serif"
@@ -2244,15 +2994,15 @@ export default function ScanPage() {
                 border: '1px solid rgba(59, 130, 246, 0.15)',
                 borderLeft: '4px solid #3b82f6',
                 borderRadius: '12px',
-                padding: '20px',
-                marginBottom: '28px',
+                padding: isMobile ? '16px' : '20px',
+                marginBottom: isMobile ? '24px' : '28px',
                 textAlign: 'left'
               }}>
                 <p style={{
                   color: '#60a5fa',
                   fontWeight: '600',
                   marginBottom: '14px',
-                  fontSize: '13px',
+                  fontSize: isMobile ? '12px' : '13px',
                   letterSpacing: '1px',
                   textTransform: 'uppercase',
                   fontFamily: "'Rajdhani', sans-serif"
@@ -2261,16 +3011,16 @@ export default function ScanPage() {
                 </p>
                 <ul style={{
                   color: '#cbd5e1',
-                  fontSize: '14px',
+                  fontSize: isMobile ? '13px' : '14px',
                   lineHeight: '2',
                   paddingLeft: '20px',
                   margin: 0,
                   fontFamily: "'Inter', sans-serif"
                 }}>
-                  <li>Authenticate using <strong style={{ color: '#60a5fa' }}>registered email</strong></li>
-                  <li>First member initiates <strong style={{ color: '#3b82f6' }}>24-hour timer</strong></li>
-                  <li>All team members share <strong>unified deadline</strong></li>
-                  <li>Timer activation is <strong style={{ color: '#fca5a5' }}>irreversible</strong></li>
+                  <li>Authenticate using <strong style={{ color: '#60a5fa' }}>registered email ID</strong></li>
+                  <li>Access your team's <strong style={{ color: '#3b82f6' }}>case materials</strong></li>
+                  <li>Coordinate with <strong>team members</strong> for investigation</li>
+                  <li>Submit findings via <strong style={{ color: '#fca5a5' }}>secured portal</strong></li>
                 </ul>
               </div>
 
@@ -2283,7 +3033,7 @@ export default function ScanPage() {
                   background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                   color: '#ffffff',
                   fontWeight: '600',
-                  padding: '16px 28px',
+                  padding: isMobile ? '14px 20px' : '16px 28px',
                   borderRadius: '12px',
                   border: 'none',
                   cursor: error ? 'not-allowed' : 'pointer',
@@ -2292,7 +3042,7 @@ export default function ScanPage() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '12px',
-                  fontSize: '15px',
+                  fontSize: isMobile ? '14px' : '15px',
                   boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
                   transition: 'all 0.3s ease',
                   letterSpacing: '0.5px',
@@ -2312,7 +3062,7 @@ export default function ScanPage() {
                   }
                 }}
               >
-                <svg style={{ width: '20px', height: '20px' }} viewBox="0 0 24 24">
+                <svg style={{ width: isMobile ? '18px' : '20px', height: isMobile ? '18px' : '20px' }} viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -2324,15 +3074,15 @@ export default function ScanPage() {
               {/* Footer */}
               <p style={{
                 color: '#64748b',
-                fontSize: '12px',
-                marginTop: '24px',
+                fontSize: isMobile ? '11px' : '12px',
+                marginTop: isMobile ? '20px' : '24px',
                 lineHeight: '1.7',
                 fontFamily: "'Inter', sans-serif",
                 borderTop: '1px solid rgba(59, 130, 246, 0.1)',
-                paddingTop: '20px'
+                paddingTop: isMobile ? '16px' : '20px'
               }}>
                 › By proceeding, you confirm receipt of case materials<br/>
-                › System will activate 24-hour investigation window<br/>
+                › Access to investigation portal and resources<br/>
                 › National Forensic Sciences University
               </p>
             </div>
@@ -2342,7 +3092,6 @@ export default function ScanPage() {
     </>
   );
 }
-
 
 success.js
 import { useRouter } from 'next/router';
@@ -2648,6 +3397,61 @@ export default function TimesUpPage() {
           90% { opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
+                  /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+          div[style*="padding: '60px 50px'"] {
+            padding: 2rem 1.25rem !important;
+          }
+
+          h1 {
+            font-size: 2rem !important;
+          }
+
+          p {
+            font-size: 0.95rem !important;
+          }
+
+          /* Success icon smaller */
+          div[style*="width: '140px'"][style*="height: '140px'"] {
+            width: 100px !important;
+            height: 100px !important;
+          }
+
+          div[style*="width: '120px'"][style*="height: '120px'"] {
+            width: 80px !important;
+            height: 80px !important;
+          }
+
+          svg {
+            width: 45px !important;
+            height: 45px !important;
+          }
+
+          /* Info boxes */
+          div[style*="padding: '28px'"] {
+            padding: 1.25rem !important;
+          }
+
+          div[style*="padding: '24px'"] {
+            padding: 1.25rem !important;
+          }
+
+          ul {
+            font-size: 0.85rem !important;
+            padding-left: 1.25rem !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          h1 {
+            font-size: 1.75rem !important;
+          }
+
+          div[style*="fontSize: '48px'"] h1 {
+            font-size: 1.75rem !important;
+          }
+        }
+
       `}</style>
 
       <div style={{

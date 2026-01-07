@@ -9,25 +9,36 @@ export default function DashboardPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [answers, setAnswers] = useState({
+    q1: '',
+    q2: '',
+    q3: '',
+    q4: '',
+    q5: '',
+    q6: '',
+    q7: ''
+  });
   
-  const { teamName, startTime, endTime, firstScanner, isFirst, currentUser } = router.query;
+  const { teamName, startTime, endTime, endTimeISO, firstScanner, isFirst, currentUser } = router.query;
 
   useEffect(() => {
     setMounted(true);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ✅ Timer uses ISO format to fix NaN issue
   useEffect(() => {
-    if (!endTime) return;
+    if (!endTimeISO) return;
 
     const updateTimer = () => {
       const now = new Date();
-      
-      let end;
-      if (typeof endTime === 'string' && !endTime.includes('T')) {
-        end = new Date(endTime);
-      } else {
-        end = new Date(endTime);
-      }
+      const end = new Date(endTimeISO);
       
       const difference = end - now;
 
@@ -48,29 +59,55 @@ export default function DashboardPage() {
     const interval = setInterval(updateTimer, 1000);
 
     return () => clearInterval(interval);
-  }, [endTime]);
+  }, [endTimeISO]);
 
+  // ✅ Handle "Terminate Investigation" - Submits answers + stops timer
   const handleFinishEarly = async () => {
+    // Validate all fields are filled
+    if (!answers.q1 || !answers.q2 || !answers.q3 || !answers.q4 || !answers.q5 || !answers.q6 || !answers.q7) {
+      alert('⚠️ Please answer all questions before terminating the investigation.');
+      setShowConfirmModal(false);
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const response = await fetch('/api/finish-early', {
+      // First, submit answers
+      const submitResponse = await fetch('/api/submit-answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamName, answers }),
+      });
+
+      const submitData = await submitResponse.json();
+
+      if (!submitData.success) {
+        alert('Failed to submit answers. Please try again.');
+        setSubmitting(false);
+        setShowConfirmModal(false);
+        return;
+      }
+
+      // Then, finish the timer
+      const finishResponse = await fetch('/api/finish-early', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamName }),
       });
 
-      const data = await response.json();
+      const finishData = await finishResponse.json();
 
-      if (data.success) {
+      if (finishData.success) {
         router.push('/completed');
       } else {
-        alert('Failed to finish timer. Please try again.');
+        alert('Answers submitted but failed to stop timer. Please contact support.');
         setSubmitting(false);
       }
     } catch (error) {
       console.error('Error:', error);
       alert('An error occurred. Please try again.');
       setSubmitting(false);
+      setShowConfirmModal(false);
     }
   };
 
@@ -91,50 +128,12 @@ export default function DashboardPage() {
   }
 
   const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  
-  // If it's already formatted (contains "AM" or "PM"), return as is
-  if (typeof dateString === 'string' && (dateString.includes('AM') || dateString.includes('PM'))) {
+    if (!dateString) return 'N/A';
+    if (typeof dateString === 'string' && (dateString.includes('AM') || dateString.includes('PM'))) {
+      return dateString;
+    }
     return dateString;
-  }
-  
-  // If it's ISO format, convert to IST
-  if (typeof dateString === 'string' && (dateString.includes('T') || dateString.includes('Z'))) {
-    const date = new Date(dateString);
-    
-    // Add IST offset (5 hours 30 minutes)
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(date.getTime() + istOffset);
-    
-    const day = istDate.getUTCDate();
-    const getDaySuffix = (d) => {
-      if (d > 3 && d < 21) return 'th';
-      switch (d % 10) {
-        case 1: return 'st';
-        case 2: return 'nd';
-        case 3: return 'rd';
-        default: return 'th';
-      }
-    };
-    
-    const hours = istDate.getUTCHours();
-    const minutes = istDate.getUTCMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const hour12 = hours % 12 || 12;
-    const minuteStr = minutes.toString().padStart(2, '0');
-    
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[istDate.getUTCMonth()];
-    const year = istDate.getUTCFullYear();
-    
-    return `${hour12}:${minuteStr} ${ampm}, ${day}${getDaySuffix(day)} ${month} ${year}`;
-  }
-  
-  return dateString;
-};
-
-
+  };
 
   const getTimerColor = () => {
     if (!timeRemaining) return '#3b82f6';
@@ -148,6 +147,11 @@ export default function DashboardPage() {
     <>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        
+        * {
+          box-sizing: border-box;
+        }
+        
         @keyframes scanline {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(100vh); }
@@ -166,60 +170,12 @@ export default function DashboardPage() {
           90% { opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
         }
-        /* MOBILE TIMER FIX - SPECIFIC */
-        @media (max-width: 768px) {
-          /* Container */
-          div[style*="maxWidth: '600px'"][style*="gridTemplateColumns"] {
-            max-width: 100% !important;
-            padding: 0 10px !important;
-            gap: 8px !important;
-          }
-
-          /* Timer number - SMALLER */
-          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
-            font-size: 2.25rem !important;
-            line-height: 1 !important;
-          }
-
-          /* Timer box - LESS PADDING */
-          div[style*="padding: '28px 20px'"][style*="borderRadius: '16px'"] {
-            padding: 1rem 0.5rem !important;
-          }
-
-          /* Timer label - TINY */
-          div[style*="fontSize: '12px'"][style*="letterSpacing: '1.5px'"] {
-            font-size: 0.6rem !important;
-            letter-spacing: 0.5px !important;
-          }
-        }
-
-        @media (max-width: 480px) {
-          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
-            font-size: 1.85rem !important;
-          }
-
-          div[style*="padding: '28px 20px'"][style*="borderRadius: '16px'"] {
-            padding: 0.85rem 0.35rem !important;
-          }
-        }
-
-        @media (max-width: 380px) {
-          /* Very small phones */
-          div[style*="fontSize: '52px'"][style*="fontWeight: '800'"] {
-            font-size: 1.65rem !important;
-          }
-
-          div[style*="gridTemplateColumns"][style*="gap: '20px'"] {
-            gap: 6px !important;
-          }
-        }
-
       `}</style>
 
       <div style={{
         minHeight: '100vh',
         background: '#030712',
-        padding: '40px 20px',
+        padding: isMobile ? '20px 12px' : '40px 20px',
         position: 'relative',
         overflow: 'hidden'
       }}>
@@ -251,7 +207,7 @@ export default function DashboardPage() {
         }} />
 
         {/* Moving Particles */}
-        {mounted && [...Array(12)].map((_, i) => {
+        {mounted && [...Array(isMobile ? 6 : 12)].map((_, i) => {
           const startX = Math.random() * 100;
           const startY = Math.random() * 100;
           const endX = (Math.random() - 0.5) * 200;
@@ -290,63 +246,58 @@ export default function DashboardPage() {
           {/* Header */}
           <div style={{
             textAlign: 'center',
-            marginBottom: '40px',
+            marginBottom: isMobile ? '24px' : '40px',
             animation: 'fade-in 0.6s ease-out'
           }}>
             <div style={{
-  display: 'inline-block',
-  background: 'rgba(15, 23, 42, 0.7)',
-  backdropFilter: 'blur(20px)',
-  border: '1px solid rgba(59, 130, 246, 0.2)',
-  borderRadius: '20px',
-  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '20px 16px' : '30px 50px',
-  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
-  width: typeof window !== 'undefined' && window.innerWidth <= 768 ? '95%' : 'auto',
-  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : 'none'
-}}>
-
+              display: 'inline-block',
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '20px',
+              padding: isMobile ? '20px 16px' : '30px 50px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+              width: isMobile ? '100%' : 'auto'
+            }}>
               <div style={{
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.75rem' : '13px',
-  color: '#60a5fa',
-  fontFamily: "'Rajdhani', sans-serif",
-  marginBottom: '12px',
-  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '1px' : '2px',
-  textTransform: 'uppercase',
-  fontWeight: '600'
-}}>
-
+                fontSize: isMobile ? '0.7rem' : '13px',
+                color: '#60a5fa',
+                fontFamily: "'Rajdhani', sans-serif",
+                marginBottom: '12px',
+                letterSpacing: isMobile ? '1px' : '2px',
+                textTransform: 'uppercase',
+                fontWeight: '600'
+              }}>
                 [OPERATION: ACTIVE]
               </div>
               <h1 style={{
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '2rem' : '48px',
-  fontWeight: '800',
-  background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
-  backgroundClip: 'text',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  marginBottom: '12px',
-  fontFamily: "'Orbitron', sans-serif",
-  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '1px' : '2px',
-  lineHeight: '1'
-}}>
-
+                fontSize: isMobile ? '1.75rem' : '48px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #ffffff, #60a5fa)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                marginBottom: '12px',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: isMobile ? '1px' : '2px',
+                lineHeight: '1'
+              }}>
                 ANVAKRIT 2.0
               </h1>
               <div style={{
-  display: 'inline-block',
-  background: 'rgba(59, 130, 246, 0.15)',
-  border: '1px solid rgba(59, 130, 246, 0.3)',
-  borderRadius: '10px',
-  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '6px 12px' : '8px 20px',
-  color: '#60a5fa',
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.85rem' : '15px',
-  fontWeight: '600',
-  fontFamily: "'Rajdhani', sans-serif",
-  letterSpacing: '1px',
-  wordBreak: 'break-word',
-  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : 'none'
-}}>
-
+                display: 'inline-block',
+                background: 'rgba(59, 130, 246, 0.15)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '10px',
+                padding: isMobile ? '6px 12px' : '8px 20px',
+                color: '#60a5fa',
+                fontSize: isMobile ? '0.8rem' : '15px',
+                fontWeight: '600',
+                fontFamily: "'Rajdhani', sans-serif",
+                letterSpacing: '1px',
+                wordBreak: 'break-word',
+                maxWidth: '100%'
+              }}>
                 TEAM: {teamName}
               </div>
             </div>
@@ -359,14 +310,14 @@ export default function DashboardPage() {
               border: '1px solid rgba(59, 130, 246, 0.3)',
               borderLeft: '4px solid #3b82f6',
               borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '30px',
+              padding: isMobile ? '16px' : '20px',
+              marginBottom: isMobile ? '20px' : '30px',
               textAlign: 'center',
               animation: 'fade-in 0.8s ease-out'
             }}>
               <p style={{
                 color: '#60a5fa',
-                fontSize: '16px',
+                fontSize: isMobile ? '13px' : '16px',
                 fontWeight: '600',
                 margin: 0,
                 fontFamily: "'Rajdhani', sans-serif",
@@ -383,10 +334,10 @@ export default function DashboardPage() {
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '20px',
-              padding: '40px',
+              padding: isMobile ? '24px 16px' : '40px',
               border: `1px solid ${getTimerColor()}40`,
               boxShadow: `0 25px 50px rgba(0, 0, 0, 0.5)`,
-              marginBottom: '30px',
+              marginBottom: isMobile ? '20px' : '30px',
               animation: `fade-in 1s ease-out, pulse-glow 3s ease-in-out infinite`
             }}>
               <div style={{ textAlign: 'center' }}>
@@ -394,12 +345,13 @@ export default function DashboardPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '12px',
-                  marginBottom: '30px'
+                  gap: isMobile ? '8px' : '12px',
+                  marginBottom: isMobile ? '20px' : '30px',
+                  flexWrap: 'wrap'
                 }}>
                   <div style={{
-                    width: '8px',
-                    height: '8px',
+                    width: isMobile ? '6px' : '8px',
+                    height: isMobile ? '6px' : '8px',
                     background: getTimerColor(),
                     borderRadius: '50%',
                     boxShadow: `0 0 15px ${getTimerColor()}`,
@@ -407,18 +359,18 @@ export default function DashboardPage() {
                   }} />
                   <p style={{
                     color: getTimerColor(),
-                    fontSize: '16px',
+                    fontSize: isMobile ? '13px' : '16px',
                     fontWeight: '700',
                     margin: 0,
-                    letterSpacing: '2px',
+                    letterSpacing: isMobile ? '1px' : '2px',
                     fontFamily: "'Rajdhani', sans-serif",
                     textTransform: 'uppercase'
                   }}>
                     Investigation Window • Shared Deadline
                   </p>
                   <div style={{
-                    width: '8px',
-                    height: '8px',
+                    width: isMobile ? '6px' : '8px',
+                    height: isMobile ? '6px' : '8px',
                     background: getTimerColor(),
                     borderRadius: '50%',
                     boxShadow: `0 0 15px ${getTimerColor()}`,
@@ -428,15 +380,14 @@ export default function DashboardPage() {
                 </div>
 
                 <div style={{
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
-  gap: typeof window !== 'undefined' && window.innerWidth <= 768 ? '8px' : '20px',
-  marginBottom: '30px',
-  maxWidth: typeof window !== 'undefined' && window.innerWidth <= 768 ? '100%' : '600px',
-  margin: '0 auto 30px',
-  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0 8px' : '0'
-}}>
-
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: isMobile ? '8px' : '20px',
+                  marginBottom: isMobile ? '20px' : '30px',
+                  maxWidth: isMobile ? '100%' : '600px',
+                  margin: '0 auto',
+                  marginBottom: isMobile ? '20px' : '30px'
+                }}>
                   {[
                     { value: timeRemaining.hours, label: 'HOURS' },
                     { value: timeRemaining.minutes, label: 'MINUTES' },
@@ -445,34 +396,30 @@ export default function DashboardPage() {
                     <div
                       key={unit.label}
                       style={{
-  background: `rgba(59, 130, 246, 0.05)`,
-  borderRadius: '16px',
-  padding: typeof window !== 'undefined' && window.innerWidth <= 768 ? '14px 8px' : '28px 20px',
-  border: `1px solid rgba(59, 130, 246, 0.2)`,
-  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
-}}
-
+                        background: `rgba(59, 130, 246, 0.05)`,
+                        borderRadius: isMobile ? '12px' : '16px',
+                        padding: isMobile ? '12px 8px' : '28px 20px',
+                        border: `1px solid rgba(59, 130, 246, 0.2)`,
+                        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+                      }}
                     >
                       <div style={{
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 480 ? '1.75rem' : 
-           (typeof window !== 'undefined' && window.innerWidth <= 768 ? '2.25rem' : '52px'),
-  fontWeight: '800',
-  color: getTimerColor(),
-  fontFamily: "'Orbitron', sans-serif",
-  lineHeight: '1',
-  marginBottom: '12px'
-}}>
-
+                        fontSize: isMobile ? '1.75rem' : '52px',
+                        fontWeight: '800',
+                        color: getTimerColor(),
+                        fontFamily: "'Orbitron', sans-serif",
+                        lineHeight: '1',
+                        marginBottom: isMobile ? '6px' : '12px'
+                      }}>
                         {String(unit.value).padStart(2, '0')}
                       </div>
                       <div style={{
-  color: '#94a3b8',
-  fontSize: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.65rem' : '12px',
-  letterSpacing: typeof window !== 'undefined' && window.innerWidth <= 768 ? '0.5px' : '1.5px',
-  fontWeight: '600',
-  fontFamily: "'Rajdhani', sans-serif"
-}}>
-
+                        color: '#94a3b8',
+                        fontSize: isMobile ? '0.6rem' : '12px',
+                        letterSpacing: isMobile ? '0.5px' : '1.5px',
+                        fontWeight: '600',
+                        fontFamily: "'Rajdhani', sans-serif"
+                      }}>
                         {unit.label}
                       </div>
                     </div>
@@ -483,16 +430,18 @@ export default function DashboardPage() {
                   background: 'rgba(59, 130, 246, 0.1)',
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   borderRadius: '12px',
-                  padding: '16px',
-                  display: 'inline-block'
+                  padding: isMobile ? '12px' : '16px',
+                  display: 'inline-block',
+                  maxWidth: '100%'
                 }}>
                   <p style={{ 
                     color: '#60a5fa', 
-                    fontSize: '14px', 
+                    fontSize: isMobile ? '12px' : '14px', 
                     fontWeight: '600',
                     margin: 0,
                     fontFamily: "'Rajdhani', sans-serif",
-                    letterSpacing: '0.5px'
+                    letterSpacing: '0.5px',
+                    wordBreak: 'break-word'
                   }}>
                     📅 DEADLINE: {formatDate(endTime)}
                   </p>
@@ -504,31 +453,31 @@ export default function DashboardPage() {
           {/* Two Column Layout */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '24px',
-            marginBottom: '30px'
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: isMobile ? '16px' : '24px',
+            marginBottom: isMobile ? '20px' : '30px'
           }}>
             {/* Team Status Panel */}
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '16px',
-              padding: '30px',
+              padding: isMobile ? '20px' : '30px',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
               animation: 'fade-in 1.2s ease-out'
             }}>
               <h2 style={{
                 color: '#60a5fa',
-                fontSize: '18px',
+                fontSize: isMobile ? '16px' : '18px',
                 fontWeight: '700',
-                marginBottom: '24px',
+                marginBottom: isMobile ? '16px' : '24px',
                 fontFamily: "'Orbitron', sans-serif",
                 letterSpacing: '1px'
               }}>
                 📊 ACCESS REGISTRY
               </h2>
-              <div style={{ display: 'grid', gap: '14px' }}>
+              <div style={{ display: 'grid', gap: isMobile ? '10px' : '14px' }}>
                 {[
                   { label: 'Primary Investigator', value: firstScanner },
                   { label: 'Session Started', value: typeof startTime === 'string' ? startTime : formatDate(startTime) },
@@ -540,21 +489,13 @@ export default function DashboardPage() {
                       background: 'rgba(59, 130, 246, 0.08)',
                       borderLeft: `3px solid #3b82f6`,
                       borderRadius: '8px',
-                      padding: '14px',
+                      padding: isMobile ? '12px' : '14px',
                       transition: 'all 0.2s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
-                      e.currentTarget.style.transform = 'translateX(4px)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.08)';
-                      e.currentTarget.style.transform = 'translateX(0)';
                     }}
                   >
                     <div style={{
                       color: '#94a3b8',
-                      fontSize: '11px',
+                      fontSize: isMobile ? '10px' : '11px',
                       marginBottom: '6px',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
@@ -565,7 +506,7 @@ export default function DashboardPage() {
                     <div style={{
                       color: '#60a5fa',
                       fontWeight: '600',
-                      fontSize: '13px',
+                      fontSize: isMobile ? '12px' : '13px',
                       fontFamily: "'Inter', sans-serif",
                       wordBreak: 'break-all'
                     }}>
@@ -576,57 +517,36 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Mission Brief Panel */}
+            {/* Mission Objective */}
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
               borderRadius: '16px',
-              padding: '30px',
+              padding: isMobile ? '20px' : '30px',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
               animation: 'fade-in 1.4s ease-out'
             }}>
               <h2 style={{
                 color: '#60a5fa',
-                fontSize: '18px',
+                fontSize: isMobile ? '16px' : '18px',
                 fontWeight: '700',
-                marginBottom: '20px',
+                marginBottom: isMobile ? '16px' : '20px',
                 fontFamily: "'Orbitron', sans-serif",
                 letterSpacing: '1px'
               }}>
-                🎯 MISSION OBJECTIVES
+                🎯 PRIMARY OBJECTIVE
               </h2>
-              <ul style={{
+              <div style={{
                 color: '#cbd5e1',
-                fontSize: '13px',
-                lineHeight: '2',
-                paddingLeft: '20px',
-                margin: 0,
-                listStyleType: 'none',
+                fontSize: isMobile ? '13px' : '14px',
+                lineHeight: '1.9',
                 fontFamily: "'Inter', sans-serif"
               }}>
-                {[
-                  'Analyze complete case file documentation',
-                  'Reconstruct event timeline & sequence',
-                  'Evaluate suspect motives & opportunities',
-                  'Cross-reference forensic evidence',
-                  'Identify perpetrator with justification',
-                  'Submit findings via secured form'
-                ].map((item, idx) => (
-                  <li key={idx} style={{ position: 'relative', paddingLeft: '22px' }}>
-                    <span style={{
-                      position: 'absolute',
-                      left: 0,
-                      color: '#3b82f6',
-                      fontWeight: '700',
-                      fontFamily: "'Rajdhani', sans-serif"
-                    }}>
-                      [{idx + 1}]
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
+                <p style={{ margin: 0 }}>
+                  Answer the questions asked below based on your analysis of the provided case file materials.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -635,17 +555,17 @@ export default function DashboardPage() {
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
-            padding: '35px',
+            padding: isMobile ? '24px 20px' : '35px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
-            marginBottom: '30px',
-            animation: 'fade-in 1.6s ease-out'
+            marginBottom: isMobile ? '20px' : '30px',
+            animation: 'fade-in 1.5s ease-out'
           }}>
             <h2 style={{
               color: '#60a5fa',
-              fontSize: '24px',
+              fontSize: isMobile ? '18px' : '24px',
               fontWeight: '700',
-              marginBottom: '24px',
+              marginBottom: isMobile ? '18px' : '24px',
               fontFamily: "'Orbitron', sans-serif",
               textAlign: 'center',
               letterSpacing: '1px'
@@ -655,9 +575,9 @@ export default function DashboardPage() {
             
             <div style={{
               color: '#cbd5e1',
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               lineHeight: '1.9',
-              marginBottom: '28px',
+              marginBottom: isMobile ? '20px' : '28px',
               fontFamily: "'Inter', sans-serif"
             }}>
               <p style={{ marginBottom: '16px' }}>
@@ -672,12 +592,12 @@ export default function DashboardPage() {
               background: 'rgba(59, 130, 246, 0.08)',
               border: '1px solid rgba(59, 130, 246, 0.2)',
               borderRadius: '12px',
-              padding: '24px',
-              marginBottom: '24px'
+              padding: isMobile ? '18px' : '24px',
+              marginBottom: isMobile ? '18px' : '24px'
             }}>
               <h3 style={{
                 color: '#60a5fa',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '700',
                 marginBottom: '14px',
                 fontFamily: "'Rajdhani', sans-serif",
@@ -688,12 +608,12 @@ export default function DashboardPage() {
               </h3>
               <p style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
-                Upon case closure, locate the <strong style={{ color: '#60a5fa' }}>secondary QR code</strong> at the end of your case file. This will authenticate access to the <strong style={{ color: '#3b82f6' }}>secured submission portal</strong> (Google Form). Only entries submitted within the active investigation window will be processed.
+                Answer the questions below and click <strong style={{ color: '#f59e0b' }}>"Terminate Investigation"</strong> to submit your responses.
               </p>
             </div>
 
@@ -702,11 +622,11 @@ export default function DashboardPage() {
               border: '1px solid rgba(59, 130, 246, 0.2)',
               borderLeft: '4px solid #3b82f6',
               borderRadius: '12px',
-              padding: '24px'
+              padding: isMobile ? '18px' : '24px'
             }}>
               <h3 style={{
                 color: '#60a5fa',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '700',
                 marginBottom: '14px',
                 fontFamily: "'Rajdhani', sans-serif",
@@ -717,7 +637,7 @@ export default function DashboardPage() {
               </h3>
               <ul style={{
                 color: '#cbd5e1',
-                fontSize: '14px',
+                fontSize: isMobile ? '13px' : '14px',
                 lineHeight: '2',
                 paddingLeft: '20px',
                 margin: 0,
@@ -732,23 +652,386 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Early Completion Panel */}
+          {/* ✅ INVESTIGATION QUESTIONS SECTION */}
           <div style={{
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
-            padding: '40px',
-            marginBottom: '30px',
-            textAlign: 'center',
+            padding: isMobile ? '20px 16px' : '35px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+            marginBottom: isMobile ? '20px' : '30px',
+            animation: 'fade-in 1.6s ease-out'
+          }}>
+            <h2 style={{
+              color: '#60a5fa',
+              fontSize: isMobile ? '18px' : '24px',
+              fontWeight: '700',
+              marginBottom: isMobile ? '20px' : '24px',
+              fontFamily: "'Orbitron', sans-serif",
+              textAlign: 'center',
+              letterSpacing: '1px'
+            }}>
+              📋 INVESTIGATION QUESTIONS
+            </h2>
+
+            <div style={{ display: 'grid', gap: isMobile ? '16px' : '24px' }}>
+              {/* Question 1 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  1) Mode of Victim's Detention
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Vivek was brought to the police station under which circumstances?
+                </p>
+                <select
+                  value={answers.q1}
+                  onChange={(e) => setAnswers({...answers, q1: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Arrest under warrant</option>
+                  <option value="B">B. Voluntary appearance</option>
+                  <option value="C">C. Preventive custody</option>
+                  <option value="D">D. Summons for questioning</option>
+                </select>
+              </div>
+
+              {/* Question 2 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  2) Official Case Description
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  How is the case officially described in police records?
+                </p>
+                <select
+                  value={answers.q2}
+                  onChange={(e) => setAnswers({...answers, q2: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Accidental death</option>
+                  <option value="B">B. Natural death in custody</option>
+                  <option value="C">C. Suicide under inquiry</option>
+                  <option value="D">D. Suspicious / custodial death under inquiry</option>
+                </select>
+              </div>
+
+              {/* Question 3 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  3) Chemical Examination Unit
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which unit received the stomach contents for chemical examination?
+                </p>
+                <select
+                  value={answers.q3}
+                  onChange={(e) => setAnswers({...answers, q3: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Digital Forensics Lab</option>
+                  <option value="B">B. Criminal Psychology Division</option>
+                  <option value="C">C. Toxicology Unit</option>
+                  <option value="D">D. Cyber Crime Cell</option>
+                </select>
+              </div>
+
+              {/* Question 4 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  4) Ethylene Glycol Source
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which of the following items listed in the bar bill would likely be a direct source of ethylene glycol?
+                </p>
+                <select
+                  value={answers.q4}
+                  onChange={(e) => setAnswers({...answers, q4: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Absinthe</option>
+                  <option value="B">B. Single Malt Scotch</option>
+                  <option value="C">C. Old Fashioned cocktail</option>
+                  <option value="D">D. Craft Beer</option>
+                </select>
+              </div>
+
+              {/* Question 5 */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  5) Psychological Assessment Theme
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Which behavioural theme was repeatedly observed in Arun Kothari's psychological assessment?
+                </p>
+                <select
+                  value={answers.q5}
+                  onChange={(e) => setAnswers({...answers, q5: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif"
+                  }}
+                >
+                  <option value="">Select an answer</option>
+                  <option value="A">A. Empathy and remorse</option>
+                  <option value="B">B. Emotional detachment</option>
+                  <option value="C">C. Suppressed aggression and need for dominance</option>
+                  <option value="D">D. Cognitive impairment</option>
+                </select>
+              </div>
+
+              {/* Question 6 - Long Answer */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  6) Modus Operandi Analysis
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Considering the FSL toxicology report indicating ethylene glycol presence along with traces of ethanol, what is your expert opinion on the modus operandi, timeline, and manner of ingestion in relation to the documented events?
+                </p>
+                <textarea
+                  value={answers.q6}
+                  onChange={(e) => setAnswers({...answers, q6: e.target.value})}
+                  rows={isMobile ? 5 : 6}
+                  placeholder="Enter your detailed analysis..."
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif",
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {/* Question 7 - Long Answer */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '12px',
+                padding: isMobile ? '16px' : '20px'
+              }}>
+                <label style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  display: 'block',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  letterSpacing: '1px'
+                }}>
+                  7) Explanatory Hypotheses
+                </label>
+                <p style={{
+                  color: '#cbd5e1',
+                  fontSize: isMobile ? '12px' : '13px',
+                  marginBottom: '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: '1.6'
+                }}>
+                  Considering the available documentation, what plausible explanatory hypotheses emerge regarding the sequence of events and possible suspects along with evidence-based justification?
+                </p>
+                <textarea
+                  value={answers.q7}
+                  onChange={(e) => setAnswers({...answers, q7: e.target.value})}
+                  rows={isMobile ? 5 : 6}
+                  placeholder="Enter your detailed hypothesis and justification..."
+                  style={{
+                    width: '100%',
+                    padding: isMobile ? '10px' : '12px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontFamily: "'Inter', sans-serif",
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ TERMINATE INVESTIGATION SECTION */}
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '16px',
+            padding: isMobile ? '28px 20px' : '40px',
+            marginBottom: isMobile ? '20px' : '30px',
+            textAlign: 'center',
+            border: '1px solid rgba(245, 158, 11, 0.2)',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
             animation: 'fade-in 1.8s ease-out'
           }}>
             <h3 style={{
-              color: '#60a5fa',
-              fontSize: '22px',
+              color: '#f59e0b',
+              fontSize: isMobile ? '18px' : '22px',
               fontWeight: '700',
-              marginBottom: '18px',
+              marginBottom: isMobile ? '14px' : '18px',
               fontFamily: "'Orbitron', sans-serif",
               letterSpacing: '1px'
             }}>
@@ -756,14 +1039,15 @@ export default function DashboardPage() {
             </h3>
             <p style={{
               color: '#cbd5e1',
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               lineHeight: '1.8',
-              marginBottom: '24px',
+              marginBottom: isMobile ? '20px' : '24px',
               maxWidth: '700px',
-              margin: '0 auto 24px',
+              margin: '0 auto',
+              marginBottom: isMobile ? '20px' : '24px',
               fontFamily: "'Inter', sans-serif"
             }}>
-              If your team has successfully submitted the final report via the <strong style={{ color: '#60a5fa' }}>Google Form</strong> (accessed through the QR code in your case file), you may terminate the investigation window early.
+              If you have answered all questions above, you may terminate the investigation window and submit your final answers.
             </p>
             
             <div style={{
@@ -771,19 +1055,20 @@ export default function DashboardPage() {
               border: '1px solid rgba(239, 68, 68, 0.3)',
               borderLeft: '4px solid #ef4444',
               borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '28px',
+              padding: isMobile ? '16px' : '20px',
+              marginBottom: isMobile ? '20px' : '28px',
               maxWidth: '650px',
-              margin: '0 auto 28px'
+              margin: '0 auto',
+              marginBottom: isMobile ? '20px' : '28px'
             }}>
               <p style={{
                 color: '#fca5a5',
-                fontSize: '13px',
+                fontSize: isMobile ? '12px' : '13px',
                 lineHeight: '1.8',
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
-                <strong style={{ color: '#ef4444' }}>⚠️ WARNING:</strong> This action will <strong>immediately terminate</strong> the 24-hour investigation window for your <strong>entire team</strong>. Proceed only after confirmed form submission. <strong>This action is irreversible.</strong>
+                <strong style={{ color: '#ef4444' }}>⚠️ WARNING:</strong> This action will <strong>immediately terminate</strong> the 24-hour investigation window for your <strong>entire team</strong>. Proceed only after all questions are answered. <strong>This action is irreversible.</strong>
               </p>
             </div>
 
@@ -793,10 +1078,10 @@ export default function DashboardPage() {
               style={{
                 background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                 color: '#ffffff',
-                padding: '16px 40px',
+                padding: isMobile ? '14px 24px' : '16px 40px',
                 borderRadius: '12px',
                 border: 'none',
-                fontSize: '15px',
+                fontSize: isMobile ? '14px' : '15px',
                 fontWeight: '600',
                 cursor: submitting ? 'not-allowed' : 'pointer',
                 opacity: submitting ? 0.5 : 1,
@@ -845,7 +1130,7 @@ export default function DashboardPage() {
                 background: 'rgba(15, 23, 42, 0.95)',
                 backdropFilter: 'blur(20px)',
                 borderRadius: '20px',
-                padding: '50px 40px',
+                padding: isMobile ? '40px 24px' : '50px 40px',
                 maxWidth: '550px',
                 width: '100%',
                 border: '1px solid rgba(59, 130, 246, 0.3)',
@@ -853,8 +1138,8 @@ export default function DashboardPage() {
                 animation: 'fade-in 0.3s ease-out'
               }}>
                 <div style={{
-                  width: '80px',
-                  height: '80px',
+                  width: isMobile ? '60px' : '80px',
+                  height: isMobile ? '60px' : '80px',
                   margin: '0 auto 30px',
                   background: 'rgba(59, 130, 246, 0.15)',
                   borderRadius: '50%',
@@ -862,14 +1147,14 @@ export default function DashboardPage() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <svg style={{ width: '40px', height: '40px', color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg style={{ width: isMobile ? '30px' : '40px', height: isMobile ? '30px' : '40px', color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
 
                 <h2 style={{
                   color: 'white',
-                  fontSize: '26px',
+                  fontSize: isMobile ? '20px' : '26px',
                   fontWeight: '700',
                   marginBottom: '20px',
                   textAlign: 'center',
@@ -883,12 +1168,12 @@ export default function DashboardPage() {
                   background: 'rgba(59, 130, 246, 0.1)',
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   borderRadius: '12px',
-                  padding: '24px',
-                  marginBottom: '30px'
+                  padding: isMobile ? '20px' : '24px',
+                  marginBottom: isMobile ? '24px' : '30px'
                 }}>
                   <p style={{
                     color: '#cbd5e1',
-                    fontSize: '15px',
+                    fontSize: isMobile ? '14px' : '15px',
                     lineHeight: '1.8',
                     marginBottom: '16px',
                     textAlign: 'center',
@@ -898,24 +1183,25 @@ export default function DashboardPage() {
                   </p>
                   <p style={{
                     color: '#60a5fa',
-                    fontSize: '20px',
+                    fontSize: isMobile ? '16px' : '20px',
                     fontWeight: '700',
                     textAlign: 'center',
                     margin: '16px 0',
-                    fontFamily: "'Orbitron', sans-serif"
+                    fontFamily: "'Orbitron', sans-serif",
+                    wordBreak: 'break-word'
                   }}>
                     TEAM {teamName}
                   </p>
                   <p style={{
                     color: '#94a3b8',
-                    fontSize: '13px',
+                    fontSize: isMobile ? '12px' : '13px',
                     lineHeight: '1.8',
                     textAlign: 'center',
                     margin: 0,
                     fontFamily: "'Inter', sans-serif"
                   }}>
                     This will immediately lock out all team members.<br/>
-                    Only proceed if submission is confirmed.<br/>
+                    Only proceed if all answers are complete.<br/>
                     <strong>THIS ACTION CANNOT BE UNDONE.</strong>
                   </p>
                 </div>
@@ -923,7 +1209,8 @@ export default function DashboardPage() {
                 <div style={{
                   display: 'flex',
                   gap: '14px',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  flexDirection: isMobile ? 'column' : 'row'
                 }}>
                   <button
                     onClick={() => setShowConfirmModal(false)}
@@ -931,16 +1218,17 @@ export default function DashboardPage() {
                     style={{
                       background: 'rgba(255, 255, 255, 0.08)',
                       color: 'white',
-                      padding: '14px 32px',
+                      padding: isMobile ? '12px 24px' : '14px 32px',
                       borderRadius: '10px',
                       border: '1px solid rgba(255, 255, 255, 0.2)',
-                      fontSize: '15px',
+                      fontSize: isMobile ? '14px' : '15px',
                       fontWeight: '600',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       transition: 'all 0.2s',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
-                      textTransform: 'uppercase'
+                      textTransform: 'uppercase',
+                      width: isMobile ? '100%' : 'auto'
                     }}
                     onMouseOver={(e) => !submitting && (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)')}
                     onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
@@ -953,10 +1241,10 @@ export default function DashboardPage() {
                     style={{
                       background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                       color: 'white',
-                      padding: '14px 32px',
+                      padding: isMobile ? '12px 24px' : '14px 32px',
                       borderRadius: '10px',
                       border: 'none',
-                      fontSize: '15px',
+                      fontSize: isMobile ? '14px' : '15px',
                       fontWeight: '600',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       opacity: submitting ? 0.6 : 1,
@@ -964,7 +1252,8 @@ export default function DashboardPage() {
                       boxShadow: '0 10px 30px rgba(34, 197, 94, 0.3)',
                       fontFamily: "'Rajdhani', sans-serif",
                       letterSpacing: '0.5px',
-                      textTransform: 'uppercase'
+                      textTransform: 'uppercase',
+                      width: isMobile ? '100%' : 'auto'
                     }}
                     onMouseOver={(e) => !submitting && (e.currentTarget.style.transform = 'scale(1.05)')}
                     onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -979,7 +1268,7 @@ export default function DashboardPage() {
           {/* Footer */}
           <div style={{
             textAlign: 'center',
-            padding: '30px',
+            padding: isMobile ? '20px' : '30px',
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '16px',
@@ -989,7 +1278,7 @@ export default function DashboardPage() {
           }}>
             <p style={{
               color: '#60a5fa',
-              fontSize: '16px',
+              fontSize: isMobile ? '14px' : '16px',
               fontStyle: 'italic',
               lineHeight: '1.8',
               marginBottom: '16px',
@@ -1005,7 +1294,7 @@ export default function DashboardPage() {
             }} />
             <p style={{
               color: '#64748b',
-              fontSize: '12px',
+              fontSize: isMobile ? '11px' : '12px',
               marginBottom: '6px',
               fontFamily: "'Rajdhani', sans-serif",
               letterSpacing: '0.5px'
@@ -1014,7 +1303,7 @@ export default function DashboardPage() {
             </p>
             <p style={{
               color: '#475569',
-              fontSize: '11px',
+              fontSize: isMobile ? '10px' : '11px',
               fontFamily: "'Inter', sans-serif"
             }}>
               NATIONAL FORENSIC SCIENCES UNIVERSITY

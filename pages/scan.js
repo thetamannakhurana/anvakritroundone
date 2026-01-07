@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/router';
 
+
 export default function ScanPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -10,15 +11,15 @@ export default function ScanPage() {
   const [progress, setProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
-useEffect(() => {
-  const handleResize = () => {
-    setIsMobile(window.innerWidth <= 768);
-  };
-  
-  handleResize();
-  window.addEventListener('resize', handleResize);
-  return () => window.removeEventListener('resize', handleResize);
-}, []);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -102,7 +103,8 @@ useEffect(() => {
           justifyContent: 'center',
           background: '#030712',
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          padding: isMobile ? '20px' : '0'
         }}>
           {/* Grid Background */}
           <div style={{
@@ -121,9 +123,9 @@ useEffect(() => {
           {/* Radar Animation */}
           <div style={{
             position: 'relative',
-            width: '180px',
-            height: '180px',
-            marginBottom: '40px'
+            width: isMobile ? '150px' : '180px',
+            height: isMobile ? '150px' : '180px',
+            marginBottom: isMobile ? '32px' : '40px'
           }}>
             {/* Pulse Rings */}
             {[...Array(3)].map((_, i) => (
@@ -148,8 +150,8 @@ useEffect(() => {
               position: 'absolute',
               top: '50%',
               left: '50%',
-              width: '130px',
-              height: '130px',
+              width: isMobile ? '110px' : '130px',
+              height: isMobile ? '110px' : '130px',
               background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
               borderRadius: '50%',
               transform: 'translate(-50%, -50%)',
@@ -161,7 +163,7 @@ useEffect(() => {
                 top: '50%',
                 left: '50%',
                 width: '2px',
-                height: '65px',
+                height: isMobile ? '55px' : '65px',
                 background: 'linear-gradient(to bottom, #3b82f6, transparent)',
                 transformOrigin: 'top center',
                 transform: 'translate(-50%, 0)',
@@ -174,8 +176,8 @@ useEffect(() => {
               position: 'absolute',
               top: '50%',
               left: '50%',
-              width: '16px',
-              height: '16px',
+              width: isMobile ? '14px' : '16px',
+              height: isMobile ? '14px' : '16px',
               background: '#3b82f6',
               borderRadius: '50%',
               transform: 'translate(-50%, -50%)',
@@ -187,21 +189,22 @@ useEffect(() => {
           <div style={{
             textAlign: 'center',
             color: 'white',
-            maxWidth: '400px'
+            maxWidth: '400px',
+            padding: isMobile ? '0 20px' : '0'
           }}>
             <p style={{
-              fontSize: '24px',
+              fontSize: isMobile ? '20px' : '24px',
               fontWeight: '700',
               color: '#60a5fa',
               marginBottom: '12px',
               fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: '2px',
+              letterSpacing: isMobile ? '1.5px' : '2px',
               textShadow: '0 0 20px rgba(96, 165, 250, 0.5)'
             }}>
               AUTHENTICATING
             </p>
             <p style={{
-              fontSize: '14px',
+              fontSize: isMobile ? '13px' : '14px',
               color: '#94a3b8',
               marginBottom: '30px',
               fontFamily: "'Rajdhani', sans-serif",
@@ -232,7 +235,7 @@ useEffect(() => {
               }} />
             </div>
             <p style={{
-              fontSize: '12px',
+              fontSize: isMobile ? '11px' : '12px',
               color: '#60a5fa',
               fontFamily: "'Rajdhani', sans-serif",
               fontWeight: '600',
@@ -274,7 +277,7 @@ useEffect(() => {
         alignItems: 'center',
         justifyContent: 'center',
         background: '#030712',
-        padding: '20px',
+        padding: isMobile ? '20px 16px' : '20px',
         position: 'relative',
         overflow: 'hidden'
       }}>
@@ -316,16 +319,16 @@ useEffect(() => {
             background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: '20px',
-            padding: '50px 40px',
+            padding: isMobile ? '40px 24px' : '50px 40px',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.05)'
           }}>
             <div style={{ textAlign: 'center' }}>
               {/* Security Icon */}
               <div style={{
-                width: '90px',
-                height: '90px',
-                margin: '0 auto 30px',
+                width: isMobile ? '70px' : '90px',
+                height: isMobile ? '70px' : '90px',
+                margin: isMobile ? '0 auto 24px' : '0 auto 30px',
                 background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
                 borderRadius: '50%',
                 display: 'flex',
@@ -339,8 +342,8 @@ useEffect(() => {
                     key={i}
                     style={{
                       position: 'absolute',
-                      width: '55px',
-                      height: '55px',
+                      width: isMobile ? '45px' : '55px',
+                      height: isMobile ? '45px' : '55px',
                       border: '2px solid #3b82f6',
                       borderRadius: '50%',
                       animation: `fingerprint ${2 + i * 0.5}s ease-in-out infinite`,
@@ -349,8 +352,8 @@ useEffect(() => {
                   />
                 ))}
                 <svg style={{ 
-                  width: '45px', 
-                  height: '45px', 
+                  width: isMobile ? '35px' : '45px', 
+                  height: isMobile ? '35px' : '45px', 
                   color: '#3b82f6', 
                   filter: 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.6))', 
                   zIndex: 1 
@@ -363,29 +366,28 @@ useEffect(() => {
               {/* Header */}
               <div style={{
                 background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.08), transparent)',
-                padding: '12px',
-                marginBottom: '24px',
+                padding: isMobile ? '10px' : '12px',
+                marginBottom: isMobile ? '20px' : '24px',
                 borderRadius: '12px',
                 border: '1px solid rgba(59, 130, 246, 0.1)'
               }}>
                 <h1 style={{
-  fontSize: isMobile ? '1.5rem' : '32px',
-  fontWeight: '700',
-  background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
-  backgroundClip: 'text',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  marginBottom: '8px',
-  fontFamily: "'Orbitron', sans-serif",
-  letterSpacing: isMobile ? '0.5px' : '1px'
-}}>
-  AUTHENTICATION
-</h1>
-
+                  fontSize: isMobile ? '1.5rem' : '32px',
+                  fontWeight: '700',
+                  background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  marginBottom: '8px',
+                  fontFamily: "'Orbitron', sans-serif",
+                  letterSpacing: isMobile ? '0.5px' : '1px'
+                }}>
+                  AUTHENTICATION
+                </h1>
                 <p style={{
                   color: '#94a3b8',
                   marginBottom: '0',
-                  fontSize: '14px',
+                  fontSize: isMobile ? '12px' : '14px',
                   fontFamily: "'Rajdhani', sans-serif",
                   letterSpacing: '0.5px'
                 }}>
@@ -399,12 +401,12 @@ useEffect(() => {
                   border: '1px solid rgba(239, 68, 68, 0.3)',
                   borderLeft: '4px solid #ef4444',
                   borderRadius: '12px',
-                  padding: '18px',
-                  marginBottom: '24px'
+                  padding: isMobile ? '16px' : '18px',
+                  marginBottom: isMobile ? '20px' : '24px'
                 }}>
                   <p style={{ 
                     color: '#fca5a5', 
-                    fontSize: '14px', 
+                    fontSize: isMobile ? '13px' : '14px', 
                     margin: 0, 
                     fontWeight: '600',
                     fontFamily: "'Inter', sans-serif"
@@ -420,15 +422,15 @@ useEffect(() => {
                 border: '1px solid rgba(59, 130, 246, 0.15)',
                 borderLeft: '4px solid #3b82f6',
                 borderRadius: '12px',
-                padding: '20px',
-                marginBottom: '28px',
+                padding: isMobile ? '16px' : '20px',
+                marginBottom: isMobile ? '24px' : '28px',
                 textAlign: 'left'
               }}>
                 <p style={{
                   color: '#60a5fa',
                   fontWeight: '600',
                   marginBottom: '14px',
-                  fontSize: '13px',
+                  fontSize: isMobile ? '12px' : '13px',
                   letterSpacing: '1px',
                   textTransform: 'uppercase',
                   fontFamily: "'Rajdhani', sans-serif"
@@ -437,16 +439,16 @@ useEffect(() => {
                 </p>
                 <ul style={{
                   color: '#cbd5e1',
-                  fontSize: '14px',
+                  fontSize: isMobile ? '13px' : '14px',
                   lineHeight: '2',
                   paddingLeft: '20px',
                   margin: 0,
                   fontFamily: "'Inter', sans-serif"
                 }}>
-                  <li>Authenticate using <strong style={{ color: '#60a5fa' }}>registered email</strong></li>
-                  <li>First member initiates <strong style={{ color: '#3b82f6' }}>24-hour timer</strong></li>
-                  <li>All team members share <strong>unified deadline</strong></li>
-                  <li>Timer activation is <strong style={{ color: '#fca5a5' }}>irreversible</strong></li>
+                  <li>Authenticate using <strong style={{ color: '#60a5fa' }}>registered email ID</strong></li>
+                  <li>Access your team's <strong style={{ color: '#3b82f6' }}>case materials</strong></li>
+                  <li>Coordinate with <strong>team members</strong> for investigation</li>
+                  <li>Submit findings via <strong style={{ color: '#fca5a5' }}>secured portal</strong></li>
                 </ul>
               </div>
 
@@ -459,7 +461,7 @@ useEffect(() => {
                   background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                   color: '#ffffff',
                   fontWeight: '600',
-                  padding: '16px 28px',
+                  padding: isMobile ? '14px 20px' : '16px 28px',
                   borderRadius: '12px',
                   border: 'none',
                   cursor: error ? 'not-allowed' : 'pointer',
@@ -468,7 +470,7 @@ useEffect(() => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '12px',
-                  fontSize: '15px',
+                  fontSize: isMobile ? '14px' : '15px',
                   boxShadow: '0 10px 30px rgba(59, 130, 246, 0.3)',
                   transition: 'all 0.3s ease',
                   letterSpacing: '0.5px',
@@ -488,7 +490,7 @@ useEffect(() => {
                   }
                 }}
               >
-                <svg style={{ width: '20px', height: '20px' }} viewBox="0 0 24 24">
+                <svg style={{ width: isMobile ? '18px' : '20px', height: isMobile ? '18px' : '20px' }} viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -500,15 +502,15 @@ useEffect(() => {
               {/* Footer */}
               <p style={{
                 color: '#64748b',
-                fontSize: '12px',
-                marginTop: '24px',
+                fontSize: isMobile ? '11px' : '12px',
+                marginTop: isMobile ? '20px' : '24px',
                 lineHeight: '1.7',
                 fontFamily: "'Inter', sans-serif",
                 borderTop: '1px solid rgba(59, 130, 246, 0.1)',
-                paddingTop: '20px'
+                paddingTop: isMobile ? '16px' : '20px'
               }}>
                 › By proceeding, you confirm receipt of case materials<br/>
-                › System will activate 24-hour investigation window<br/>
+                › Access to investigation portal and resources<br/>
                 › National Forensic Sciences University
               </p>
             </div>
