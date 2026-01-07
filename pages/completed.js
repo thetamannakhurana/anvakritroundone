@@ -229,7 +229,7 @@ export default function CompletedPage() {
                 margin: 0,
                 fontFamily: "'Inter', sans-serif"
               }}>
-                Thank you for participating in <strong style={{ color: '#60a5fa' }}>ANVAKRIT 2.0</strong>. Your submission has been recorded and will be evaluated by our forensic panel. All team members have been locked out of the investigation portal.
+                Thank you for participating in <strong style={{ color: '#60a5fa' }}>ANVAKRIT 2.0</strong>. Your submission has been recorded and will be evaluated by our judges. All team members have been locked out of the investigation portal.
               </p>
             </div>
 
@@ -283,9 +283,8 @@ export default function CompletedPage() {
                 fontFamily: "'Inter', sans-serif"
               }}>
                 <li>Your submission is now under forensic review</li>
-                <li>Results will be announced via registered email</li>
+                <li>Results will be announced on registered email</li>
                 <li>Top teams advance to offline finals</li>
-                <li>Check your email for further updates</li>
               </ul>
             </div>
 

@@ -406,7 +406,7 @@ export default function TimesUpPage() {
                 fontFamily: "'Inter', sans-serif"
               }}>
                 <li>If submitted: Your entry is under evaluation</li>
-                <li>Results will be announced via email</li>
+                <li>Results will be announced on registered email</li>
                 <li>Late submissions cannot be accepted</li>
                 <li>Check your registered email for updates</li>
               </ul>
@@ -429,7 +429,7 @@ export default function TimesUpPage() {
               }}>
                 📧 <strong>Support Contact:</strong><br/>
                 For queries or technical issues:<br/>
-                <strong style={{ fontSize: '15px', color: '#3b82f6' }}>anvakrit@nfsu.ac.in</strong>
+                <strong style={{ fontSize: '15px', color: '#3b82f6' }}>csi_dc@nfsu.ac.in</strong>
               </p>
             </div>
 
