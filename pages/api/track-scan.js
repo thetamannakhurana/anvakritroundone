@@ -118,13 +118,16 @@ export default async function handler(req, res) {
 
     // ✅ Check if team has already submitted or time expired
     if (teamStatus === 'Completed' || teamStatus === 'Time Expired') {
-      return res.status(403).json({
-        success: false,
-        locked: true,
-        message: `Access denied. Investigation window has been closed.`,
-        status: teamStatus
-      });
-    }
+  return res.status(403).json({
+    success: false,
+    locked: true,
+    redirectTo: '/locked',
+    teamName: teamName,
+    status: teamStatus,
+    message: `Access denied. Investigation window has been closed.`
+  });
+}
+
 
     // ✅ Check if timer already started
     if (existingStartTime && existingEndTime) {

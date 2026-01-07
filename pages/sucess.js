@@ -38,10 +38,17 @@ export default function SuccessPage() {
         console.log('✅ API Response:', data); // DEBUG
 
         if (!response.ok) {
-          if (data.locked) {
-            router.push('/completed');
-            return;
-          }
+  if (data.locked) {
+    router.push({
+      pathname: '/locked',
+      query: {
+        teamName: data.teamName,
+        status: data.status
+      }
+    });
+    return;
+  }
+
           throw new Error(data.message || 'Failed to process scan');
         }
 

@@ -52,10 +52,10 @@ useEffect(() => {
       if (ampm === 'PM' && hour24 !== 12) hour24 += 12;
       if (ampm === 'AM' && hour24 === 12) hour24 = 0;
       
-      // Create date in IST, convert to UTC
-      const endDateIST = new Date(year, monthIndex, day, hour24, parseInt(minute));
-      const istOffset = 5.5 * 60 * 60 * 1000;
-      endTimeToUse = new Date(endDateIST.getTime() - istOffset).toISOString();
+      // Create date directly without offset conversion
+const endDate = new Date(year, monthIndex, day, hour24, parseInt(minute));
+endTimeToUse = endDate.toISOString();
+
       
       console.log('✅ Calculated endTimeISO:', endTimeToUse);
     }
@@ -129,8 +129,23 @@ useEffect(() => {
       const finishData = await finishResponse.json();
 
       if (finishData.success) {
-        router.push('/completed');
-      } else {
+  const now = new Date();
+  const submittedAt = now.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+  
+  router.push({
+    pathname: '/locked',
+    query: {
+      teamName,
+      submittedAt,
+      status: 'Completed'
+    }
+  });
+}
+ else {
         alert('Answers submitted but failed to stop timer. Please contact support.');
         setSubmitting(false);
       }
