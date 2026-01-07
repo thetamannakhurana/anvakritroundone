@@ -329,7 +329,7 @@ export default function DashboardPage() {
           )}
 
           {/* Countdown Timer */}
-          {timeRemaining && !timeRemaining.expired && (
+          {timeRemaining && (
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
               backdropFilter: 'blur(20px)',
