@@ -32,34 +32,65 @@ export default function DashboardPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ✅ Timer uses ISO format to fix NaN issue
-  useEffect(() => {
-    if (!endTimeISO) return;
-
-    const updateTimer = () => {
-      const now = new Date();
-      const end = new Date(endTimeISO);
+  // ✅ Timer - works with or without endTimeISO
+useEffect(() => {
+  // If endTimeISO missing, parse from formatted endTime
+  let endTimeToUse = endTimeISO;
+  
+  if (!endTimeToUse && endTime) {
+    console.log('⚠️ endTimeISO missing, parsing from formatted endTime:', endTime);
+    
+    // Parse: "12:43 AM, 9th Jan 2026"
+    const match = endTime.match(/(\d+):(\d+)\s*(AM|PM),\s*(\d+)(st|nd|rd|th)\s*(\w+)\s*(\d+)/);
+    
+    if (match) {
+      const [, hour, minute, ampm, day, , month, year] = match;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthIndex = months.indexOf(month);
       
-      const difference = end - now;
+      let hour24 = parseInt(hour);
+      if (ampm === 'PM' && hour24 !== 12) hour24 += 12;
+      if (ampm === 'AM' && hour24 === 12) hour24 = 0;
+      
+      // Create date in IST, convert to UTC
+      const endDateIST = new Date(year, monthIndex, day, hour24, parseInt(minute));
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      endTimeToUse = new Date(endDateIST.getTime() - istOffset).toISOString();
+      
+      console.log('✅ Calculated endTimeISO:', endTimeToUse);
+    }
+  }
+  
+  if (!endTimeToUse) {
+    console.log('❌ No valid end time available');
+    return;
+  }
 
-      if (difference <= 0) {
-        setTimeRemaining({ hours: 0, minutes: 0, seconds: 0, expired: true });
-        router.push('/timesup');
-        return;
-      }
+  const updateTimer = () => {
+    const now = new Date();
+    const end = new Date(endTimeToUse);
+    
+    const difference = end - now;
 
-      const hours = Math.floor(difference / (1000 * 60 * 60));
-      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+    if (difference <= 0) {
+      setTimeRemaining({ hours: 0, minutes: 0, seconds: 0, expired: true });
+      router.push('/timesup');
+      return;
+    }
 
-      setTimeRemaining({ hours, minutes, seconds, expired: false });
-    };
+    const hours = Math.floor(difference / (1000 * 60 * 60));
+    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((difference % (1000 * 60)) / 1000);
 
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
+    setTimeRemaining({ hours, minutes, seconds, expired: false });
+  };
 
-    return () => clearInterval(interval);
-  }, [endTimeISO]);
+  updateTimer();
+  const interval = setInterval(updateTimer, 1000);
+
+  return () => clearInterval(interval);
+}, [endTimeISO, endTime]);
+
 
   // ✅ Handle "Terminate Investigation" - Submits answers + stops timer
   const handleFinishEarly = async () => {
