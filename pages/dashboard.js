@@ -348,22 +348,6 @@ endTimeToUse = endDate.toISOString();
               </div>
             </div>
           </div>
-{/* 🔍 DEBUG - Remove after testing */}
-<div style={{
-  background: 'rgba(255, 0, 0, 0.2)',
-  border: '2px solid red',
-  borderRadius: '10px',
-  padding: '20px',
-  marginBottom: '20px',
-  color: 'white',
-  fontSize: '14px',
-  fontFamily: 'monospace'
-}}>
-  <strong>🔍 DEBUG INFO:</strong><br/>
-  endTimeISO: {endTimeISO || '❌ MISSING'}<br/>
-  timeRemaining: {timeRemaining ? `✅ ${timeRemaining.hours}h ${timeRemaining.minutes}m ${timeRemaining.seconds}s` : '❌ NULL'}<br/>
-  Timer Color: {getTimerColor()}<br/>
-</div>
 
           {/* First Access Alert */}
           {isFirst === 'true' && (
