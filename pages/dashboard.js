@@ -138,9 +138,9 @@ export default function DashboardPage() {
   const getTimerColor = () => {
     if (!timeRemaining) return '#3b82f6';
     const totalSeconds = timeRemaining.hours * 3600 + timeRemaining.minutes * 60 + timeRemaining.seconds;
-    if (totalSeconds < 3600) return '#ef4444';
-    if (totalSeconds < 10800) return '#f59e0b';
-    return '#3b82f6';
+    if (totalSeconds < 3600) return '#ef4444'; // Red: < 1 hour
+    if (totalSeconds < 10800) return '#f59e0b'; // Yellow: < 3 hours
+    return '#3b82f6'; // Blue: > 3 hours
   };
 
   return (
@@ -328,7 +328,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Countdown Timer */}
+          {/* ✅ COUNTDOWN TIMER - REMOVED !timeRemaining.expired CONDITION */}
           {timeRemaining && (
             <div style={{
               background: 'rgba(15, 23, 42, 0.7)',
