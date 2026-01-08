@@ -870,53 +870,54 @@ endTimeToUse = endDate.toISOString();
               </div>
 
               {/* Question 4 */}
-              <div style={{
-                background: 'rgba(59, 130, 246, 0.05)',
-                border: '1px solid rgba(59, 130, 246, 0.15)',
-                borderRadius: '12px',
-                padding: isMobile ? '16px' : '20px'
-              }}>
-                <label style={{
-                  color: '#60a5fa',
-                  fontSize: isMobile ? '13px' : '14px',
-                  fontWeight: '700',
-                  marginBottom: '12px',
-                  display: 'block',
-                  fontFamily: "'Rajdhani', sans-serif",
-                  letterSpacing: '1px'
-                }}>
-                  4) Ethylene Glycol Source
-                </label>
-                <p style={{
-                  color: '#cbd5e1',
-                  fontSize: isMobile ? '12px' : '13px',
-                  marginBottom: '16px',
-                  fontFamily: "'Inter', sans-serif",
-                  lineHeight: '1.6'
-                }}>
-                  Which of the following items listed in the bar bill would likely be a direct source of ethylene glycol?
-                </p>
-                <select
-                  value={answers.q4}
-                  onChange={(e) => setAnswers({...answers, q4: e.target.value})}
-                  style={{
-                    width: '100%',
-                    padding: isMobile ? '10px' : '12px',
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    borderRadius: '8px',
-                    color: '#cbd5e1',
-                    fontSize: isMobile ? '13px' : '14px',
-                    fontFamily: "'Inter', sans-serif"
-                  }}
-                >
-                  <option value="">Select an answer</option>
-                  <option value="A">A. Absinthe</option>
-                  <option value="B">B. Single Malt Scotch</option>
-                  <option value="C">C. Old Fashioned cocktail</option>
-                  <option value="D">D. Craft Beer</option>
-                </select>
-              </div>
+<div style={{
+  background: 'rgba(59, 130, 246, 0.05)',
+  border: '1px solid rgba(59, 130, 246, 0.15)',
+  borderRadius: '12px',
+  padding: isMobile ? '16px' : '20px'
+}}>
+  <label style={{
+    color: '#60a5fa',
+    fontSize: isMobile ? '13px' : '14px',
+    fontWeight: '700',
+    marginBottom: '12px',
+    display: 'block',
+    fontFamily: "'Rajdhani', sans-serif",
+    letterSpacing: '1px'
+  }}>
+    4) Item Responsible for Death
+  </label>
+  <p style={{
+    color: '#cbd5e1',
+    fontSize: isMobile ? '12px' : '13px',
+    marginBottom: '16px',
+    fontFamily: "'Inter', sans-serif",
+    lineHeight: '1.6'
+  }}>
+    Which of the following items would likely be the item responsible for Vivek's death?
+  </p>
+  <select
+    value={answers.q4}
+    onChange={(e) => setAnswers({...answers, q4: e.target.value})}
+    style={{
+      width: '100%',
+      padding: isMobile ? '10px' : '12px',
+      background: 'rgba(15, 23, 42, 0.8)',
+      border: '1px solid rgba(59, 130, 246, 0.3)',
+      borderRadius: '8px',
+      color: '#cbd5e1',
+      fontSize: isMobile ? '13px' : '14px',
+      fontFamily: "'Inter', sans-serif"
+    }}
+  >
+    <option value="">Select an answer</option>
+    <option value="A">A. Absinthe</option>
+    <option value="B">B. Single Malt Scotch</option>
+    <option value="C">C. Custodial torture</option>
+    <option value="D">D. Unexplainable circumstances</option>
+  </select>
+</div>
+
 
               {/* Question 5 */}
               <div style={{
@@ -967,79 +968,87 @@ endTimeToUse = endDate.toISOString();
                 </select>
               </div>
 
-              {/* Question 6 - Long Answer */}
-              <div style={{
-                background: 'rgba(59, 130, 246, 0.05)',
-                border: '1px solid rgba(59, 130, 246, 0.15)',
-                borderRadius: '12px',
-                padding: isMobile ? '16px' : '20px'
-              }}>
-                <label style={{
-                  color: '#60a5fa',
-                  fontSize: isMobile ? '13px' : '14px',
-                  fontWeight: '700',
-                  marginBottom: '12px',
-                  display: 'block',
-                  fontFamily: "'Rajdhani', sans-serif",
-                  letterSpacing: '1px'
-                }}>
-                  6) Modus Operandi Analysis
-                </label>
-                <p style={{
-                  color: '#cbd5e1',
-                  fontSize: isMobile ? '12px' : '13px',
-                  marginBottom: '16px',
-                  fontFamily: "'Inter', sans-serif",
-                  lineHeight: '1.6'
-                }}>
-                  Considering the FSL toxicology report indicating ethylene glycol presence along with traces of ethanol, what is your expert opinion on the modus operandi, timeline, and manner of ingestion in relation to the documented events?
-                </p>
-                <textarea
-                  value={answers.q6}
-                  onChange={(e) => setAnswers({...answers, q6: e.target.value})}
-                  rows={isMobile ? 5 : 6}
-                  placeholder="Enter your detailed analysis..."
-                  style={{
-                    width: '100%',
-                    padding: isMobile ? '10px' : '12px',
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    borderRadius: '8px',
-                    color: '#cbd5e1',
-                    fontSize: isMobile ? '13px' : '14px',
-                    fontFamily: "'Inter', sans-serif",
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
+              {/* Question 6 - MCQ */}
+<div style={{
+  background: 'rgba(59, 130, 246, 0.05)',
+  border: '1px solid rgba(59, 130, 246, 0.15)',
+  borderRadius: '12px',
+  padding: isMobile ? '16px' : '20px'
+}}>
+  <label style={{
+    color: '#60a5fa',
+    fontSize: isMobile ? '13px' : '14px',
+    fontWeight: '700',
+    marginBottom: '12px',
+    display: 'block',
+    fontFamily: "'Rajdhani', sans-serif",
+    letterSpacing: '1px'
+  }}>
+    6) Suspect Identification
+  </label>
+  <p style={{
+    color: '#cbd5e1',
+    fontSize: isMobile ? '12px' : '13px',
+    marginBottom: '16px',
+    fontFamily: "'Inter', sans-serif",
+    lineHeight: '1.6'
+  }}>
+    Do you think Vivek was killed by someone? If yes, then who do you think is the killer?
+  </p>
+  <select
+    value={answers.q6}
+    onChange={(e) => setAnswers({...answers, q6: e.target.value})}
+    style={{
+      width: '100%',
+      padding: isMobile ? '10px' : '12px',
+      background: 'rgba(15, 23, 42, 0.8)',
+      border: '1px solid rgba(59, 130, 246, 0.3)',
+      borderRadius: '8px',
+      color: '#cbd5e1',
+      fontSize: isMobile ? '13px' : '14px',
+      fontFamily: "'Inter', sans-serif"
+    }}
+  >
+    <option value="">Select an answer</option>
+    <option value="A">A. Arun Kothari</option>
+    <option value="B">B. Gaurav Singh</option>
+    <option value="C">C. Dilip Yadav</option>
+    <option value="D">D. Roshni Sharma</option>
+    <option value="E">E. Priya Dabu</option>
+    <option value="F">F. He died by accident</option>
+    <option value="G">G. He died of natural causes</option>
+  </select>
+</div>
+
 
               {/* Question 7 - Long Answer */}
-              <div style={{
-                background: 'rgba(59, 130, 246, 0.05)',
-                border: '1px solid rgba(59, 130, 246, 0.15)',
-                borderRadius: '12px',
-                padding: isMobile ? '16px' : '20px'
-              }}>
-                <label style={{
-                  color: '#60a5fa',
-                  fontSize: isMobile ? '13px' : '14px',
-                  fontWeight: '700',
-                  marginBottom: '12px',
-                  display: 'block',
-                  fontFamily: "'Rajdhani', sans-serif",
-                  letterSpacing: '1px'
-                }}>
-                  7) Explanatory Hypotheses
-                </label>
-                <p style={{
-                  color: '#cbd5e1',
-                  fontSize: isMobile ? '12px' : '13px',
-                  marginBottom: '16px',
-                  fontFamily: "'Inter', sans-serif",
-                  lineHeight: '1.6'
-                }}>
-                  Considering the available documentation, what plausible explanatory hypotheses emerge regarding the sequence of events and possible suspects along with evidence-based justification?
-                </p>
+<div style={{
+  background: 'rgba(59, 130, 246, 0.05)',
+  border: '1px solid rgba(59, 130, 246, 0.15)',
+  borderRadius: '12px',
+  padding: isMobile ? '16px' : '20px'
+}}>
+  <label style={{
+    color: '#60a5fa',
+    fontSize: isMobile ? '13px' : '14px',
+    fontWeight: '700',
+    marginBottom: '12px',
+    display: 'block',
+    fontFamily: "'Rajdhani', sans-serif",
+    letterSpacing: '1px'
+  }}>
+    7) How and Why Analysis
+  </label>
+  <p style={{
+    color: '#cbd5e1',
+    fontSize: isMobile ? '12px' : '13px',
+    marginBottom: '16px',
+    fontFamily: "'Inter', sans-serif",
+    lineHeight: '1.6'
+  }}>
+    In consideration to all evidences and reports given in the case file, briefly explain HOW (timeline, modus operandi) and WHY (reason) the death took place?
+  </p>
+
                 <textarea
                   value={answers.q7}
                   onChange={(e) => setAnswers({...answers, q7: e.target.value})}
