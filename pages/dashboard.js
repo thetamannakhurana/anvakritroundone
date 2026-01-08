@@ -478,7 +478,8 @@ endTimeToUse = endDate.toISOString();
                   borderRadius: '12px',
                   padding: isMobile ? '12px' : '16px',
                   display: 'inline-block',
-                  maxWidth: '100%'
+                  maxWidth: '100%',
+                  marginTop: isMobile ? '15px' : '20px'  //
                 }}>
                   <p style={{ 
                     color: '#60a5fa', 
@@ -1114,7 +1115,8 @@ endTimeToUse = endDate.toISOString();
               marginBottom: isMobile ? '20px' : '28px',
               maxWidth: '650px',
               margin: '0 auto',
-              marginBottom: isMobile ? '20px' : '28px'
+              marginTop: isMobile ? '24px' : '30px',    // ✅ ADD THIS
+              marginBottom: isMobile ? '24px' : '30px'  // ✅ UPDATE THIS
             }}>
               <p style={{
                 color: '#fca5a5',
@@ -1146,7 +1148,8 @@ endTimeToUse = endDate.toISOString();
                 textTransform: 'uppercase',
                 fontFamily: "'Rajdhani', sans-serif",
                 maxWidth: '400px',
-                width: '100%'
+                width: '100%',
+                marginTop: isMobile ? '8px' : '0'  // ✅ ADD THIS LINE
               }}
               onMouseOver={(e) => {
                 if (!submitting) {
